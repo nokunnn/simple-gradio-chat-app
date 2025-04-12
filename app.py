@@ -50,9 +50,11 @@ def generate_lp_planning(product_theme):
         分析内容の重要ポイントを簡潔に要約し、それを以下の条件でSVGデータとして表現してください:
         
         SVG要件:
-        - サイズは16:9の比率で設定してください（例: width="1600" height="900"）
-        - 要約した内容が視覚的に理解しやすいレイアウトにしてください
-        - タイトル、要点、関連する図表を含めてください
+        - サイズは16:9の比率で設定してください（例: width="800" height="450"）
+        - よりコンパクトなレイアウトで、要点を簡潔に表現してください
+        - フォントサイズを適切に設定し、小さいサイズでも読みやすくしてください
+        - 必要最小限の要素でクリーンに表現してください
+        - タイトル、要点、関連する図表を含めつつ、情報を凝縮してください
         - 色彩を効果的に使って視覚的に魅力的にしてください
         - パワーポイントスライドとして使用できる完成度にしてください
         - 必ず完全なSVGコード（<svg>タグから</svg>タグまで）を提供してください
@@ -73,23 +75,20 @@ def generate_lp_planning(product_theme):
         # SVGが見つからない場合の処理
         if not svg_code:
             analysis_text = full_response
-            svg_code = '<svg width="1600" height="900" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="24" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
+            svg_code = '<svg width="800" height="450" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="18" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
         else:
             # SVGを除いた分析テキスト部分
             analysis_text = full_response.replace(svg_code, '')
             
-            # SVGのサイズが16:9でない場合、修正を試みる
-            if not re.search(r'width="1600"[\s\S]*?height="900"', svg_code) and not re.search(r'width="[0-9]+"[\s\S]*?height="[0-9]+"', svg_code):
-                # サイズ属性がない場合、追加する
-                svg_code = svg_code.replace('<svg', '<svg width="1600" height="900"')
-            elif not re.search(r'width="1600"[\s\S]*?height="900"', svg_code):
-                # サイズを16:9に修正
-                svg_code = re.sub(r'width="[0-9]+"', 'width="1600"', svg_code)
-                svg_code = re.sub(r'height="[0-9]+"', 'height="900"', svg_code)
+            # SVGのサイズを800x450（16:9）に変更
+            svg_code = re.sub(r'width="[0-9]+"', 'width="800"', svg_code)
+            svg_code = re.sub(r'height="[0-9]+"', 'height="450"', svg_code)
             
-            # viewBox属性がない場合、追加する
+            # viewBox属性を調整
             if 'viewBox' not in svg_code:
-                svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 1600 900"')
+                svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"')
+            else:
+                svg_code = re.sub(r'viewBox="[^"]+"', 'viewBox="0 0 800 450"', svg_code)
         
         return analysis_text, svg_code
         
@@ -152,10 +151,10 @@ with gr.Blocks(css="""
     .svg-container { 
         margin: 10px auto;
         border: 1px solid #ccc; 
-        padding: 5px;
+        padding: 10px;
         background-color: white;
-        width: 100%;
-        max-width: 1200px;
+        width: 90%;
+        max-width: 800px;
         text-align: center;
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -163,28 +162,36 @@ with gr.Blocks(css="""
     .svg-container svg {
         width: 100%;
         height: auto;
-        max-height: 600px;
+        max-height: 450px;
     }
     footer { visibility: hidden }
     .responsive-layout {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 15px;
     }
     .chat-area {
-        min-height: 400px;
+        min-height: 350px;
+        max-height: 400px;
+    }
+    .title-area {
+        margin-bottom: 5px;
+    }
+    .input-area {
+        margin-top: 10px;
     }
 """) as demo:
-    gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
-    gr.Markdown("""
-    このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
-    
-    **使い方**: 
-    - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
-    - 通常のチャットには、普通にメッセージを入力してください
-    
-    **例**: 「LP企画: クラウドセキュリティサービス」
-    """)
+    with gr.Column(elem_classes="title-area"):
+        gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
+        gr.Markdown("""
+        このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
+        
+        **使い方**: 
+        - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
+        - 通常のチャットには、普通にメッセージを入力してください
+        
+        **例**: 「LP企画: クラウドセキュリティサービス」
+        """)
     
     with gr.Column(elem_classes="responsive-layout"):
         # チャットエリア
@@ -194,7 +201,7 @@ with gr.Blocks(css="""
             elem_classes="chat-area",
             bubble_full_width=False,
             avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-            height=400
+            height=350
         )
         
         # SVG出力エリア
@@ -203,7 +210,7 @@ with gr.Blocks(css="""
             elem_id="svg-output"
         )
     
-        with gr.Row():
+        with gr.Row(elem_classes="input-area"):
             txt = gr.Textbox(
                 scale=4,
                 show_label=False,
