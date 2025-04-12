@@ -6,6 +6,7 @@ from pathlib import Path
 import io
 import base64
 import re
+import traceback
 
 # Google Gemini API Key設定
 # 実際に使用する際には環境変数から読み込むことをお勧めします
@@ -68,13 +69,15 @@ def generate_lp_planning(product_theme):
         return analysis_text, svg_code
         
     except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"詳細なエラー情報:\n{error_detail}")
         return f"エラーが発生しました: {str(e)}", None
 
 def respond(message, history):
     """チャットメッセージに応答する関数"""
     # 入力が空の場合は何も返さない
     if not message.strip():
-        return "", None
+        return [], None
     
     # LP企画設計モード
     if "LP企画:" in message:
@@ -86,7 +89,7 @@ def respond(message, history):
         # チャット履歴に追加
         chat_history.append((message, response))
         
-        return response, svg_code
+        return [(message, response)], svg_code
     
     # 通常のチャットモード
     elif "こんにちは" in message or "hello" in message.lower():
@@ -112,12 +115,12 @@ def respond(message, history):
     # チャット履歴に追加
     chat_history.append((message, response))
     
-    return response, None
+    return [(message, response)], None
 
 def clear_chat():
     """チャット履歴をクリアする関数"""
     chat_history.clear()
-    return None, None
+    return [], None
 
 # Gradio インターフェースの作成
 with gr.Blocks(css="""
@@ -163,10 +166,10 @@ with gr.Blocks(css="""
     clear_btn = gr.Button("会話をクリア")
     
     # イベントの設定
-    txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output])
+    txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output], queue=False)
     txt_submit_event.then(lambda: "", None, [txt])
     
-    submit_click_event = submit_btn.click(respond, [txt, chatbot], [chatbot, svg_output])
+    submit_click_event = submit_btn.click(respond, [txt, chatbot], [chatbot, svg_output], queue=False)
     submit_click_event.then(lambda: "", None, [txt])
     
     clear_btn.click(clear_chat, None, [chatbot, svg_output])
@@ -174,4 +177,10 @@ with gr.Blocks(css="""
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
         print("警告: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。")
-    demo.launch(share=True)
+    
+    try:
+        demo.launch(share=True)
+    except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"アプリケーション起動中にエラーが発生しました: {str(e)}")
+        print(f"詳細なエラー情報:\n{error_detail}")
