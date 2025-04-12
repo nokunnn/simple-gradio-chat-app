@@ -7,6 +7,7 @@ import io
 import base64
 import re
 import traceback
+import time
 
 # Google Gemini API Key設定
 # 実際に使用する際には環境変数から読み込むことをお勧めします
@@ -51,12 +52,13 @@ def generate_lp_planning(product_theme):
         
         SVG要件:
         - サイズは16:9の比率で設定してください（例: width="800" height="450"）
-        - よりコンパクトなレイアウトで、要点を簡潔に表現してください
-        - フォントサイズを適切に設定し、小さいサイズでも読みやすくしてください
-        - 必要最小限の要素でクリーンに表現してください
-        - タイトル、要点、関連する図表を含めつつ、情報を凝縮してください
-        - 色彩を効果的に使って視覚的に魅力的にしてください
-        - パワーポイントスライドとして使用できる完成度にしてください
+        - ビジネス文書・プレゼンテーションとしての体裁を重視してください
+        - 企業向けパワーポイントのスライドとしての活用を想定してください
+        - プロフェッショナルなカラースキームを使用してください（青系のビジネスカラーが適切です）
+        - 明確なタイトル、サブタイトル、箇条書きなどの階層構造を持たせてください
+        - フォントはシンプルで読みやすいサンセリフフォントを使用してください
+        - 適切なマージンとパディングを取り、余白を効果的に活用してください
+        - 図表を使用する場合は、シンプルかつビジネス的な印象のデザインにしてください
         - 必ず完全なSVGコード（<svg>タグから</svg>タグまで）を提供してください
 
         SVGのコードは<svg>タグで始まり</svg>タグで終わる完全な形式で必ず記述してください。
@@ -97,49 +99,61 @@ def generate_lp_planning(product_theme):
         print(f"詳細なエラー情報:\n{error_detail}")
         return f"エラーが発生しました: {str(e)}", None
 
-def respond(message, history):
-    """チャットメッセージに応答する関数"""
+def stream_response(message, history):
+    """チャットメッセージに応答する関数（ストリーミング版）"""
     # 入力が空の場合は何も返さない
     if not message.strip():
-        return [], None
+        yield [], None
+        return
     
     # LP企画設計モード
     if "LP企画:" in message:
         product_theme = message.replace("LP企画:", "").strip()
         analysis, svg_code = generate_lp_planning(product_theme)
         
-        response = f"### {product_theme} の法人向けLP企画分析\n\n{analysis}"
+        full_response = f"### {product_theme} の法人向けLP企画分析\n\n{analysis}"
+        
+        # 逐次的に表示（文字単位）
+        partial_response = ""
+        for char in full_response:
+            partial_response += char
+            time.sleep(0.01)  # 表示速度の調整
+            yield [(message, partial_response)], svg_code
+        
+        # チャット履歴に追加
+        chat_history.append((message, full_response))
+        
+    # 通常のチャットモード
+    else:
+        if "こんにちは" in message or "hello" in message.lower():
+            response = "こんにちは！どうぞお話しください。LP企画設計をご希望の場合は、「LP企画: 商品名やテーマ」のように入力してください。"
+        elif "LP企画" in message or "lp" in message.lower():
+            response = "LP企画設計機能を使うには「LP企画: あなたの商品やサービスのテーマ」のように入力してください。"
+        elif "使い方" in message:
+            response = """
+            このチャットアプリの使い方:
+            
+            1. 通常のチャット: 質問や会話を入力すると応答します
+            2. LP企画設計: 「LP企画: 商品名やテーマ」と入力すると、そのテーマについての法人向けLPの企画設計分析とSVG図を生成します
+            
+            例: 「LP企画: クラウドセキュリティサービス」
+            """
+        elif "元気" in message:
+            response = "元気です！あなたはどうですか？"
+        elif "さようなら" in message or "goodbye" in message.lower() or "バイバイ" in message:
+            response = "さようなら！またお話しましょう。"
+        else:
+            response = "なるほど、もっと教えてください。LP企画設計をご希望の場合は、「LP企画: 商品名やテーマ」のように入力してください。"
+        
+        # 逐次的に表示（文字単位）
+        partial_response = ""
+        for char in response:
+            partial_response += char
+            time.sleep(0.01)  # 表示速度の調整
+            yield [(message, partial_response)], None
         
         # チャット履歴に追加
         chat_history.append((message, response))
-        
-        return [(message, response)], svg_code
-    
-    # 通常のチャットモード
-    elif "こんにちは" in message or "hello" in message.lower():
-        response = "こんにちは！どうぞお話しください。LP企画設計をご希望の場合は、「LP企画: 商品名やテーマ」のように入力してください。"
-    elif "LP企画" in message or "lp" in message.lower():
-        response = "LP企画設計機能を使うには「LP企画: あなたの商品やサービスのテーマ」のように入力してください。"
-    elif "使い方" in message:
-        response = """
-        このチャットアプリの使い方:
-        
-        1. 通常のチャット: 質問や会話を入力すると応答します
-        2. LP企画設計: 「LP企画: 商品名やテーマ」と入力すると、そのテーマについての法人向けLPの企画設計分析とSVG図を生成します
-        
-        例: 「LP企画: クラウドセキュリティサービス」
-        """
-    elif "元気" in message:
-        response = "元気です！あなたはどうですか？"
-    elif "さようなら" in message or "goodbye" in message.lower() or "バイバイ" in message:
-        response = "さようなら！またお話しましょう。"
-    else:
-        response = "なるほど、もっと教えてください。LP企画設計をご希望の場合は、「LP企画: 商品名やテーマ」のように入力してください。"
-    
-    # チャット履歴に追加
-    chat_history.append((message, response))
-    
-    return [(message, response)], None
 
 def clear_chat():
     """チャット履歴をクリアする関数"""
@@ -221,11 +235,11 @@ with gr.Blocks(css="""
     
         clear_btn = gr.Button("会話をクリア")
     
-    # イベントの設定
-    txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output], queue=False)
+    # イベントの設定（ストリーミング対応）
+    txt_submit_event = txt.submit(stream_response, [txt, chatbot], [chatbot, svg_output], queue=False)
     txt_submit_event.then(lambda: "", None, [txt])
     
-    submit_click_event = submit_btn.click(respond, [txt, chatbot], [chatbot, svg_output], queue=False)
+    submit_click_event = submit_btn.click(stream_response, [txt, chatbot], [chatbot, svg_output], queue=False)
     submit_click_event.then(lambda: "", None, [txt])
     
     clear_btn.click(clear_chat, None, [chatbot, svg_output])
