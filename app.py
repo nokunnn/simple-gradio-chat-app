@@ -36,16 +36,28 @@ def generate_lp_planning(product_theme):
 
         商品/サービステーマ: {product_theme}
 
-        以下の3つの観点から分析し、詳細に説明してください:
+        以下の3つの観点から分析してください:
         1. ターゲットの分析: このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのか
         2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
         3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
 
-        回答は分析的かつ実用的な内容にし、各セクションで具体的な提案をしてください。
-        最後に、これらの分析をパワーポイントスライドに変換するためのSVGデータとして、
-        簡潔なフローチャートか図解を提案してください。SVGコードを含めてください。
+        回答は2つの部分に分けてください:
 
-        SVGのコードは<svg>タグで始まり</svg>タグで終わる完全な形式で提供してください。
+        【パート1】詳細な分析
+        各観点について詳細に説明し、具体的な提案を含めてください。
+        
+        【パート2】要約と視覚化
+        分析内容の重要ポイントを簡潔に要約し、それを以下の条件でSVGデータとして表現してください:
+        
+        SVG要件:
+        - サイズは16:9の比率で設定してください（例: width="1600" height="900"）
+        - 要約した内容が視覚的に理解しやすいレイアウトにしてください
+        - タイトル、要点、関連する図表を含めてください
+        - 色彩を効果的に使って視覚的に魅力的にしてください
+        - パワーポイントスライドとして使用できる完成度にしてください
+        - 必ず完全なSVGコード（<svg>タグから</svg>タグまで）を提供してください
+
+        SVGのコードは<svg>タグで始まり</svg>タグで終わる完全な形式で必ず記述してください。
         """
         
         # Geminiからの応答を取得
@@ -61,10 +73,23 @@ def generate_lp_planning(product_theme):
         # SVGが見つからない場合の処理
         if not svg_code:
             analysis_text = full_response
-            svg_code = None
+            svg_code = '<svg width="1600" height="900" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="24" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
         else:
             # SVGを除いた分析テキスト部分
             analysis_text = full_response.replace(svg_code, '')
+            
+            # SVGのサイズが16:9でない場合、修正を試みる
+            if not re.search(r'width="1600"[\s\S]*?height="900"', svg_code) and not re.search(r'width="[0-9]+"[\s\S]*?height="[0-9]+"', svg_code):
+                # サイズ属性がない場合、追加する
+                svg_code = svg_code.replace('<svg', '<svg width="1600" height="900"')
+            elif not re.search(r'width="1600"[\s\S]*?height="900"', svg_code):
+                # サイズを16:9に修正
+                svg_code = re.sub(r'width="[0-9]+"', 'width="1600"', svg_code)
+                svg_code = re.sub(r'height="[0-9]+"', 'height="900"', svg_code)
+            
+            # viewBox属性がない場合、追加する
+            if 'viewBox' not in svg_code:
+                svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 1600 900"')
         
         return analysis_text, svg_code
         
@@ -124,7 +149,14 @@ def clear_chat():
 
 # Gradio インターフェースの作成
 with gr.Blocks(css="""
-    .svg-container { margin-top: 20px; border: 1px solid #ccc; padding: 10px; }
+    .svg-container { 
+        margin-top: 20px; 
+        border: 1px solid #ccc; 
+        padding: 10px; 
+        background-color: white;
+        overflow: auto;
+        height: 400px;
+    }
     footer { visibility: hidden }
 """) as demo:
     gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
