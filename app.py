@@ -150,14 +150,30 @@ def clear_chat():
 # Gradio インターフェースの作成
 with gr.Blocks(css="""
     .svg-container { 
-        margin-top: 20px; 
+        margin: 10px auto;
         border: 1px solid #ccc; 
-        padding: 10px; 
+        padding: 5px;
         background-color: white;
-        overflow: auto;
-        height: 400px;
+        width: 100%;
+        max-width: 1200px;
+        text-align: center;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .svg-container svg {
+        width: 100%;
+        height: auto;
+        max-height: 600px;
     }
     footer { visibility: hidden }
+    .responsive-layout {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    .chat-area {
+        min-height: 400px;
+    }
 """) as demo:
     gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
     gr.Markdown("""
@@ -170,32 +186,33 @@ with gr.Blocks(css="""
     **例**: 「LP企画: クラウドセキュリティサービス」
     """)
     
-    with gr.Row():
-        with gr.Column(scale=7):
-            chatbot = gr.Chatbot(
-                [],
-                elem_id="chatbot",
-                bubble_full_width=False,
-                avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-                height=400
-            )
-        
-        with gr.Column(scale=3):
-            svg_output = gr.HTML(
-                value='<div class="svg-container">SVG図がここに表示されます</div>', 
-                elem_id="svg-output"
-            )
-    
-    with gr.Row():
-        txt = gr.Textbox(
-            scale=4,
-            show_label=False,
-            placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
-            container=False,
+    with gr.Column(elem_classes="responsive-layout"):
+        # チャットエリア
+        chatbot = gr.Chatbot(
+            [],
+            elem_id="chatbot",
+            elem_classes="chat-area",
+            bubble_full_width=False,
+            avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
+            height=400
         )
-        submit_btn = gr.Button("送信", scale=1)
+        
+        # SVG出力エリア
+        svg_output = gr.HTML(
+            value='<div class="svg-container">SVG図がここに表示されます</div>', 
+            elem_id="svg-output"
+        )
     
-    clear_btn = gr.Button("会話をクリア")
+        with gr.Row():
+            txt = gr.Textbox(
+                scale=4,
+                show_label=False,
+                placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
+                container=False,
+            )
+            submit_btn = gr.Button("送信", scale=1)
+    
+        clear_btn = gr.Button("会話をクリア")
     
     # イベントの設定
     txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output], queue=False)
