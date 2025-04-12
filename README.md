@@ -74,6 +74,42 @@ python app.py
 
 入力後、アプリケーションはGoogle Gemini APIを使用して分析を行い、結果をテキストと共にSVGデータとして表示します。
 
+## Google Colabでの実行方法
+
+Google Colabを使用して以下の手順でアプリケーションを実行できます：
+
+```python
+# リポジトリをクローン
+!git clone https://github.com/nokunnn/simple-gradio-chat-app.git
+%cd simple-gradio-chat-app
+
+# 必要なパッケージをインストール
+!pip install -r requirements.txt
+
+# Google Gemini APIキーを設定
+import os
+os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキーをここに入力"
+
+# アプリを実行
+!python app.py
+```
+
+実行後、Colabの出力に表示される「Public URL:」のリンクをクリックしてアプリにアクセスできます。
+
+## エラー対処法
+
+### 「Data incompatible with tuples format」エラーが発生した場合
+
+このエラーはGradioのチャットボットコンポーネントにデータを渡す際の形式の問題です。最新版のコードではこの問題を修正していますが、古いバージョンを使用している場合は以下のような修正が必要です：
+
+1. `respond` 関数の戻り値を `[(message, response)]` の形式に変更
+2. 空の応答の場合は `[]` を返すよう変更
+3. イベント設定に `queue=False` を追加
+
+### その他のエラー対応
+
+アプリケーションには詳細なエラー表示機能が追加されています。エラーが発生した場合はコンソールに詳細情報が表示されますので、それを参考に対処してください。
+
 ## カスタマイズ
 
 - LP企画設計のプロンプトは `app.py` の `generate_lp_planning()` 関数内で定義されています。必要に応じてカスタマイズできます。
