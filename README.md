@@ -1,6 +1,6 @@
 # 法人向けLP企画設計チャットアプリ
 
-このリポジトリは、Gradioを使用したチャットアプリケーションで、Google Gemini APIを活用して法人向けランディングページ（LP）の企画設計をサポートする機能を備えています。
+このリポジトリは、Gradioを使用したチャットアプリケーションで、Google Gemini APIとAnthropic Claude 3.7 Sonnetを活用して法人向けランディングページ（LP）の企画設計をサポートする機能を備えています。
 
 ## 機能
 
@@ -17,8 +17,19 @@
   2. 訴求軸の検討
   3. 訴求シナリオの検討
 - 分析内容を以下の形式で出力:
-  - 詳細な分析テキスト（逐次的に表示）
-  - ビジネス文書/パワーポイントスタイルのSVG図表（16:9比率）
+  - 詳細な分析テキスト（Google Gemini APIによる生成）
+  - ビジネス文書/パワーポイントスタイルのSVG図表（Anthropic Claude 3.7 Sonnetによる生成）
+
+## デュアルLLM統合
+このアプリケーションでは、2つの異なるLLMを最適な用途に合わせて活用しています：
+
+- **テキスト分析**: Google Gemini 1.5 Pro
+  - 法人向けLP企画の詳細なテキスト分析を生成
+
+- **SVG図表生成**: Anthropic Claude 3.7 Sonnet
+  - プロフェッショナルなビジネス向けSVGスライドを生成
+  - 16:9比率のワイドスクリーンフォーマット
+  - パワーポイント形式の体裁と構造を持つレイアウト
 
 ## 最適化されたSVG出力
 
@@ -45,6 +56,7 @@
 
 - Python 3.7以上
 - Google Gemini API キー
+- Anthropic Claude API キー
 
 ### インストール
 
@@ -59,21 +71,25 @@ cd simple-gradio-chat-app
 pip install -r requirements.txt
 ```
 
-3. Google Gemini API キーを環境変数に設定
+3. API キーを環境変数に設定
 ```bash
 # Linuxまたは Mac
-export GOOGLE_API_KEY="あなたのAPIキー"
+export GOOGLE_API_KEY="あなたのGemini APIキー"
+export ANTHROPIC_API_KEY="あなたのClaude APIキー"
 
 # Windows (コマンドプロンプト)
-set GOOGLE_API_KEY=あなたのAPIキー
+set GOOGLE_API_KEY=あなたのGemini APIキー
+set ANTHROPIC_API_KEY=あなたのClaude APIキー
 
 # Windows (PowerShell)
-$env:GOOGLE_API_KEY="あなたのAPIキー"
+$env:GOOGLE_API_KEY="あなたのGemini APIキー"
+$env:ANTHROPIC_API_KEY="あなたのClaude APIキー"
 ```
 
-または、app.pyファイル内で直接設定することもできます（セキュリティ上推奨されません）：
+またはapp.pyファイル内で直接設定することもできます（セキュリティ上推奨されません）：
 ```python
-os.environ["GOOGLE_API_KEY"] = "あなたのAPIキーをここに入力"
+os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキー"
+os.environ["ANTHROPIC_API_KEY"] = "あなたのClaude APIキー"
 ```
 
 ## 使用方法
@@ -94,9 +110,9 @@ python app.py
 - 「LP企画: AI搭載データ分析ツール」
 - 「LP企画: 企業向けコミュニケーションプラットフォーム」
 
-入力後、アプリケーションはGoogle Gemini APIを使用して分析を行い、以下のように結果を表示します：
-1. テキスト分析が逐次的に（タイピング風に）チャット欄に表示されます
-2. ビジネス向けのパワーポイントスタイルのSVG図が生成されます
+入力後、アプリケーションは以下のように結果を表示します：
+1. テキスト分析が逐次的に（タイピング風に）チャット欄に表示されます（Gemini APIによる生成）
+2. ビジネス向けのパワーポイントスタイルのSVG図が生成されます（Claude 3.7 Sonnetによる生成）
 
 ## Google Colabでの実行方法
 
@@ -110,9 +126,10 @@ Google Colabを使用して以下の手順でアプリケーションを実行�
 # 必要なパッケージをインストール
 !pip install -r requirements.txt
 
-# Google Gemini APIキーを設定
+# API キーを設定
 import os
-os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキーをここに入力"
+os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキー"
+os.environ["ANTHROPIC_API_KEY"] = "あなたのClaude APIキー"
 
 # アプリを実行
 !python app.py
@@ -121,6 +138,14 @@ os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキーをここに入力"
 実行後、Colabの出力に表示される「Public URL:」のリンクをクリックしてアプリにアクセスできます。
 
 ## エラー対処法
+
+### API キー関連のエラー
+
+アプリケーションがAPI キーの不足を検出した場合、エラーメッセージが表示されます：
+- Google API キーが設定されていない場合: テキスト分析が行われません
+- Anthropic API キーが設定されていない場合: SVG図が生成されません
+
+両方のAPIキーが正しく設定されていることを確認してください。
 
 ### 「Data incompatible with tuples format」エラーが発生した場合
 
@@ -140,7 +165,9 @@ os.environ["GOOGLE_API_KEY"] = "あなたのGemini APIキーをここに入力"
 
 ## カスタマイズ
 
-- LP企画設計のプロンプトは `app.py` の `generate_lp_planning()` 関数内で定義されています。必要に応じてカスタマイズできます。
+- LP企画設計のプロンプトは `app.py` の以下の関数内で定義されています：
+  - `generate_lp_planning()`: Geminiによるテキスト分析のプロンプト
+  - `generate_svg_with_claude()`: Claudeによるビジュアル生成のプロンプト
 - SVGの表示スタイルは `gr.Blocks()` 内のCSSで調整できます。
 - SVGのビジネススタイルやカラースキームを変更するには、プロンプト内の指示を修正します。
 - 逐次的なテキスト表示の速度は `time.sleep()` の値を調整して変更できます。
