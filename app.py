@@ -222,8 +222,12 @@ def generate_svg_with_claude(product_theme, analysis_text):
         prompt = f"""
         商品/サービステーマ: {product_theme}
 
-        Gemini AIによる分析結果:
-        {analysis_text}
+        分析結果: {analysis_text}
+
+        上記の分析結果を要約する際には下記に留意してください。
+        -分析項目ごとに箇条書き等で内容を簡潔に記載する
+        -文字や図形が重なったりしないようにレイアウトに注意する
+        -重要なポイントに着色を行う
     
         """
         
