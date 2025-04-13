@@ -220,16 +220,11 @@ def generate_svg_with_claude(product_theme, analysis_text):
     try:
         # Claude 3.7 Sonnetへのプロンプト
         prompt = f"""
-        以下の商品/サービステーマとその分析に基づいて、その内容を要約しSVGスライドを作成してください。
-        サイズは16:9の比率で設定してください（width="800" height="450"）
-
         商品/サービステーマ: {product_theme}
 
         Gemini AIによる分析結果:
         {analysis_text}
-        
-        SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
-        コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
+    
         """
         
         # Claude 3.7 Sonnetからの応答を取得
@@ -237,7 +232,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
             model="claude-3-7-sonnet-20250219",
             max_tokens=4096,
             temperature=0.2,
-            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
+            system="提供された分析結果に基づいて、その内容を要約したスライドデータをSVG形式で作成してください。サイズは16:9の比率で設定してください（width="800" height="450"）SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。",
             messages=[
                 {"role": "user", "content": prompt}
             ]
