@@ -2,6 +2,7 @@ import gradio as gr
 import os
 import json
 import google.generativeai as genai
+import anthropic  # Added for Claude 3.7 Sonnet API
 from pathlib import Path
 import io
 import base64
@@ -14,12 +15,93 @@ import time
 # os.environ["GOOGLE_API_KEY"] = "あなたのAPIキーをここに入力"
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
+# Anthropic Claude API Key設定
+# 実際に使用する際には環境変数から読み込むことをお勧めします
+# os.environ["ANTHROPIC_API_KEY"] = "あなたのAPIキーをここに入力"
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
 # Gemini APIの設定
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
+# Claude APIの設定
+claude_client = None
+if ANTHROPIC_API_KEY:
+    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
 # チャット履歴を保存するリスト
 chat_history = []
+
+def generate_svg_with_claude(product_theme):
+    """Claude 3.7 Sonnetを使用してSVGを生成する関数"""
+    if not ANTHROPIC_API_KEY or not claude_client:
+        return None, "エラー: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。"
+    
+    try:
+        # Claude 3.7 Sonnetへのプロンプト
+        prompt = f"""
+        あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
+        以下の商品/サービステーマに対して、法人向けLPの企画設計のためのSVGスライドを作成してください。
+
+        商品/サービステーマ: {product_theme}
+
+        以下の3つの観点から分析し、それをSVGスライドとして表現してください:
+        1. ターゲットの分析: このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのか
+        2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
+        3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
+
+        SVG要件:
+        - サイズは16:9の比率で設定してください（width="800" height="450"）
+        - ビジネス文書・プレゼンテーションとしての体裁を重視してください
+        - 企業向けパワーポイントのスライドとしての活用を想定してください
+        - プロフェッショナルなカラースキームを使用してください（青系のビジネスカラーが適切です）
+        - 明確なタイトル、サブタイトル、箇条書きなどの階層構造を持たせてください
+        - フォントはシンプルで読みやすいサンセリフフォントを使用してください
+        - 適切なマージンとパディングを取り、余白を効果的に活用してください
+        - 図表を使用する場合は、シンプルかつビジネス的な印象のデザインにしてください
+        - テキストは必ず枠内に収まるように調整し、はみ出さないようにしてください
+        - 情報量は適切に調整し、文字が小さくなり過ぎないようにしてください
+        - フォントサイズは小さくても12px以上を維持してください
+        - 3つの観点を全て1つのSVGに包含してください
+
+        SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
+        コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
+        """
+        
+        # Claude 3.7 Sonnetからの応答を取得
+        response = claude_client.messages.create(
+            model="claude-3-7-sonnet-20250219",
+            max_tokens=4096,
+            temperature=0.2,
+            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。法人向けLPの企画設計のためのSVGを作成してください。",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # 応答からSVGコードを抽出
+        svg_text = response.content[0].text
+        
+        # SVGコードを抽出（Claude 3.7はほぼ確実に正確なSVGを返すはずですが、念のため）
+        svg_match = re.search(r'<svg[\s\S]*?<\/svg>', svg_text)
+        svg_code = svg_match.group(0) if svg_match else svg_text
+        
+        # SVGのサイズを800x450（16:9）に変更
+        svg_code = re.sub(r'width="[0-9]+"', 'width="800"', svg_code)
+        svg_code = re.sub(r'height="[0-9]+"', 'height="450"', svg_code)
+        
+        # viewBox属性を調整
+        if 'viewBox' not in svg_code:
+            svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"')
+        else:
+            svg_code = re.sub(r'viewBox="[^"]+"', 'viewBox="0 0 800 450"', svg_code)
+        
+        return svg_code, None
+        
+    except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"SVG生成中のエラー情報:\n{error_detail}")
+        return None, f"SVG生成中にエラーが発生しました: {str(e)}"
 
 def generate_lp_planning(product_theme):
     """Gemini APIを使用してLP企画のための分析を生成する関数"""
@@ -42,59 +124,25 @@ def generate_lp_planning(product_theme):
         2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
         3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
 
-        回答は2つの部分に分けてください:
-
-        【パート1】詳細な分析
-        各観点について詳細に説明し、具体的な提案を含めてください。
-        
-        【パート2】要約と視覚化
-        分析内容の重要ポイントを簡潔に要約し、それを以下の条件でSVGデータとして表現してください:
-        
-        SVG要件:
-        - サイズは16:9の比率で設定してください（例: width="800" height="450"）
-        - ビジネス文書・プレゼンテーションとしての体裁を重視してください
-        - 企業向けパワーポイントのスライドとしての活用を想定してください
-        - プロフェッショナルなカラースキームを使用してください（青系のビジネスカラーが適切です）
-        - 明確なタイトル、サブタイトル、箇条書きなどの階層構造を持たせてください
-        - フォントはシンプルで読みやすいサンセリフフォントを使用してください
-        - 適切なマージンとパディングを取り、余白を効果的に活用してください
-        - 図表を使用する場合は、シンプルかつビジネス的な印象のデザインにしてください
-        - テキストは必ず枠内に収まるように調整し、はみ出さないようにしてください
-        - 情報量は適切に調整し、文字が小さくなり過ぎないようにしてください
-        - パート１における３つの観点の検討結果を全て記載してください
-        - フォントサイズは小さくても12px以上を維持してください
-        - 必ず完全なSVGコード（<svg>タグから</svg>タグまで）を提供してください
-
-        SVGのコードは<svg>タグで始まり</svg>タグで終わる完全な形式で必ず記述してください。
+        詳細な分析について説明し、具体的な提案を含めてください。
         """
         
         # Geminiからの応答を取得
         response = model.generate_content(prompt)
         
-        # 応答から分析部分とSVGコードを分離
-        full_response = response.text
+        # 応答から分析部分を取得
+        analysis_text = response.text
         
-        # SVGコードを抽出
-        svg_match = re.search(r'<svg[\s\S]*?<\/svg>', full_response)
-        svg_code = svg_match.group(0) if svg_match else None
+        # SVGは別途Claudeで生成するため、ここではSVGコードは生成しない
         
-        # SVGが見つからない場合の処理
+        # Claudeを使ってSVGを生成
+        svg_code, svg_error = generate_svg_with_claude(product_theme)
+        
+        # SVGに問題があった場合のバックアップSVG
         if not svg_code:
-            analysis_text = full_response
             svg_code = '<svg width="800" height="450" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="18" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
-        else:
-            # SVGを除いた分析テキスト部分
-            analysis_text = full_response.replace(svg_code, '')
-            
-            # SVGのサイズを800x450（16:9）に変更
-            svg_code = re.sub(r'width="[0-9]+"', 'width="800"', svg_code)
-            svg_code = re.sub(r'height="[0-9]+"', 'height="450"', svg_code)
-            
-            # viewBox属性を調整
-            if 'viewBox' not in svg_code:
-                svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"')
-            else:
-                svg_code = re.sub(r'viewBox="[^"]+"', 'viewBox="0 0 800 450"', svg_code)
+            if svg_error:
+                analysis_text += f"\n\n{svg_error}"
         
         return analysis_text, svg_code
         
@@ -196,6 +244,7 @@ with gr.Blocks(css="""
         
         **使い方**: 
         - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
+        - テキスト分析はGoogle Gemini、SVG図はAnthropic Claudeで生成します
         - 通常のチャットには、普通にメッセージを入力してください
         
         **例**: 「LP企画: クラウドセキュリティサービス」
@@ -241,6 +290,9 @@ with gr.Blocks(css="""
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
         print("警告: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。")
+    
+    if not ANTHROPIC_API_KEY:
+        print("警告: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。")
     
     try:
         demo.launch(share=True)
