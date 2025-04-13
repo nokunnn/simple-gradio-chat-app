@@ -15,7 +15,6 @@ from pptx.util import Inches, Pt
 from io import BytesIO
 import cairosvg
 from datetime import datetime
-import uuid
 
 # Google Gemini API Key設定
 # 実際に使用する際には環境変数から読み込むことをお勧めします
@@ -44,13 +43,12 @@ current_svg_code = None
 current_analysis = None
 # 現在の商品/サービステーマ
 current_theme = None
+# 現在のPowerPointファイル
+current_pptx = None
 
 def svg_to_pptx(svg_code, analysis_text=None, theme=None):
     """SVGコードをPowerPointプレゼンテーションに変換する関数"""
     try:
-        # 日時を取得してファイル名に使用
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
         # 一時ファイルを作成してSVGを一時的にPNGに変換
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
             temp_png_path = temp_png.name
@@ -258,7 +256,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
 
 def generate_lp_planning(product_theme):
     """Gemini APIを使用してLP企画のための分析を生成する関数"""
-    global current_svg_code, current_analysis, current_theme
+    global current_svg_code, current_analysis, current_theme, current_pptx
     
     if not GOOGLE_API_KEY:
         return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None
@@ -302,6 +300,11 @@ def generate_lp_planning(product_theme):
         current_analysis = analysis_text
         current_theme = product_theme
         
+        # PowerPointを生成して保存
+        pptx_data = svg_to_pptx(svg_code, analysis_text, product_theme)
+        if pptx_data:
+            current_pptx = pptx_data
+        
         return analysis_text, svg_code
         
     except Exception as e:
@@ -309,29 +312,19 @@ def generate_lp_planning(product_theme):
         print(f"詳細なエラー情報:\n{error_detail}")
         return f"エラーが発生しました: {str(e)}", None
 
-def create_pptx():
-    """現在のSVGからPowerPointを生成する関数"""
-    global current_svg_code, current_analysis, current_theme
+def get_pptx_filename():
+    """PowerPointファイルのダウンロード名を生成する関数"""
+    global current_theme
     
-    if current_svg_code is None:
-        return None, None
+    if current_theme:
+        # ファイル名に使用できない文字を除去
+        theme_part = re.sub(r'[\\/*?:"<>|]', "", current_theme)
+        theme_part = theme_part.replace(' ', '_').lower()[:30]
+        filename = f"lp_planning_{theme_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
+    else:
+        filename = f"lp_planning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
     
-    try:
-        # PowerPointを生成
-        pptx_stream = svg_to_pptx(current_svg_code, current_analysis, current_theme)
-        
-        # ファイル名を生成
-        if current_theme:
-            theme_part = re.sub(r'[^\w\s-]', '', current_theme).replace(' ', '_').lower()[:30]
-            filename = f"lp_planning_{theme_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
-        else:
-            filename = f"lp_planning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
-        
-        return pptx_stream, filename
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        print(f"PPTX生成中のエラー情報:\n{error_detail}")
-        return None, None
+    return filename
 
 def respond(message, history):
     """チャットメッセージに応答する関数"""
@@ -381,11 +374,37 @@ def respond(message, history):
 def clear_chat():
     """チャット履歴をクリアする関数"""
     chat_history.clear()
-    global current_svg_code, current_analysis, current_theme
+    global current_svg_code, current_analysis, current_theme, current_pptx
     current_svg_code = None
     current_analysis = None
     current_theme = None
+    current_pptx = None
     return [], None, '<div class="svg-container">SVG図がここに表示されます</div>', gr.update(interactive=False)
+
+def create_pptx_for_download():
+    """現在のSVGからPowerPointを生成してダウンロード用に返す関数"""
+    global current_svg_code, current_analysis, current_theme, current_pptx
+    
+    # すでに生成済みのPPTXがあればそれを使用
+    if current_pptx is not None:
+        return (current_pptx, get_pptx_filename())
+    
+    # SVGがない場合はNoneを返す
+    if current_svg_code is None:
+        return None
+    
+    try:
+        # PowerPointを生成
+        pptx_stream = svg_to_pptx(current_svg_code, current_analysis, current_theme)
+        if pptx_stream:
+            current_pptx = pptx_stream  # 生成したものを保存
+            return (pptx_stream, get_pptx_filename())
+        else:
+            return None
+    except Exception as e:
+        error_detail = traceback.format_exc()
+        print(f"PPTX生成中のエラー情報:\n{error_detail}")
+        return None
 
 # Gradio インターフェースの作成
 with gr.Blocks(css="""
@@ -465,10 +484,9 @@ with gr.Blocks(css="""
             elem_id="svg-output"
         )
         
-        # PowerPoint出力とダウンロードボタン
+        # ダウンロードボタンとファイル出力
         with gr.Row(elem_classes="button-row"):
             download_btn = gr.Button("PowerPointをダウンロード", elem_classes="dl-button", interactive=False)
-            pptx_output = gr.File(label="PowerPointファイル", visible=False)
         
         with gr.Row(elem_classes="input-area"):
             txt = gr.Textbox(
@@ -480,6 +498,9 @@ with gr.Blocks(css="""
             submit_btn = gr.Button("送信", scale=1)
     
         clear_btn = gr.Button("会話をクリア")
+    
+    # ダウンロードコンポーネント
+    pptx_file = gr.File(label="PowerPointファイル", interactive=False)
     
     # イベントの設定
     # メッセージ送信イベント（テキストボックスからのEnter）
@@ -503,10 +524,14 @@ with gr.Blocks(css="""
     )
     
     # ダウンロードボタンのイベント
-    download_btn.click(create_pptx, None, pptx_output)
+    download_btn.click(
+        fn=create_pptx_for_download,
+        inputs=None,
+        outputs=pptx_file
+    )
     
     # クリアボタンのイベント
-    clear_btn.click(clear_chat, None, [chatbot, pptx_output, svg_output, download_btn])
+    clear_btn.click(clear_chat, None, [chatbot, pptx_file, svg_output, download_btn])
 
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
