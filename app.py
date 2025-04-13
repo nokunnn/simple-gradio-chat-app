@@ -232,7 +232,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
             model="claude-3-7-sonnet-20250219",
             max_tokens=4096,
             temperature=0.2,
-            system="提供された分析結果に基づいて、その内容を要約したスライドデータをSVG形式で作成してください。サイズは16:9の比率で設定してください（width="800" height="450"）SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。",
+            system="提供された分析結果に基づいて、その内容を要約したスライドデータをSVG形式で作成してください。サイズは16:9の比率で設定してください。SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください",
             messages=[
                 {"role": "user", "content": prompt}
             ]
