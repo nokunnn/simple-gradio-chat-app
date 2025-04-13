@@ -32,8 +32,8 @@ if ANTHROPIC_API_KEY:
 # チャット履歴を保存するリスト
 chat_history = []
 
-def generate_svg_with_claude(product_theme):
-    """Claude 3.7 Sonnetを使用してSVGを生成する関数"""
+def generate_svg_with_claude(product_theme, analysis_text):
+    """Claude 3.7 SonnetにGeminiの分析結果を渡してSVGを生成する関数"""
     if not ANTHROPIC_API_KEY or not claude_client:
         return None, "エラー: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。"
     
@@ -41,11 +41,14 @@ def generate_svg_with_claude(product_theme):
         # Claude 3.7 Sonnetへのプロンプト
         prompt = f"""
         あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
-        以下の商品/サービステーマに対して、法人向けLPの企画設計のためのSVGスライドを作成してください。
+        以下の商品/サービステーマとその分析に基づいて、法人向けLPの企画設計のためのSVGスライドを作成してください。
 
         商品/サービステーマ: {product_theme}
 
-        以下の3つの観点から分析し、それをSVGスライドとして表現してください:
+        Gemini AIによる分析結果:
+        {analysis_text}
+
+        上記の分析結果に基づいて、以下の3つの観点を含むSVGスライドを作成してください:
         1. ターゲットの分析: このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのか
         2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
         3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
@@ -63,6 +66,7 @@ def generate_svg_with_claude(product_theme):
         - 情報量は適切に調整し、文字が小さくなり過ぎないようにしてください
         - フォントサイズは小さくても12px以上を維持してください
         - 3つの観点を全て1つのSVGに包含してください
+        - 提供された分析結果の重要なポイントを活用してください
 
         SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
         コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
@@ -73,7 +77,7 @@ def generate_svg_with_claude(product_theme):
             model="claude-3-7-sonnet-20250219",
             max_tokens=4096,
             temperature=0.2,
-            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。法人向けLPの企画設計のためのSVGを作成してください。",
+            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。",
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -133,10 +137,8 @@ def generate_lp_planning(product_theme):
         # 応答から分析部分を取得
         analysis_text = response.text
         
-        # SVGは別途Claudeで生成するため、ここではSVGコードは生成しない
-        
-        # Claudeを使ってSVGを生成
-        svg_code, svg_error = generate_svg_with_claude(product_theme)
+        # Claudeを使ってSVGを生成（Geminiの分析結果を渡す）
+        svg_code, svg_error = generate_svg_with_claude(product_theme, analysis_text)
         
         # SVGに問題があった場合のバックアップSVG
         if not svg_code:
@@ -245,6 +247,7 @@ with gr.Blocks(css="""
         **使い方**: 
         - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
         - テキスト分析はGoogle Gemini、SVG図はAnthropic Claudeで生成します
+        - SVG図はGeminiの分析結果に基づいて生成されます
         - 通常のチャットには、普通にメッセージを入力してください
         
         **例**: 「LP企画: クラウドセキュリティサービス」
