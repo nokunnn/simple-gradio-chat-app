@@ -15,8 +15,6 @@ from pptx.util import Inches, Pt
 from io import BytesIO
 import cairosvg
 from datetime import datetime
-import zipfile
-import shutil
 
 # Google Gemini API Key設定
 # 実際に使用する際には環境変数から読み込むことをお勧めします
@@ -45,12 +43,6 @@ current_svg_code = None
 current_analysis = None
 # 現在の商品/サービステーマ
 current_theme = None
-# 現在のダウンロードリンク
-download_link = None
-
-# ダウンロード用のディレクトリを作成
-DOWNLOAD_DIR = os.path.join(os.getcwd(), "downloads")
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def svg_to_pptx(svg_code, analysis_text=None, theme=None):
     """SVGコードをPowerPointプレゼンテーションに変換する関数"""
@@ -170,7 +162,15 @@ def svg_to_pptx(svg_code, analysis_text=None, theme=None):
                         p = tf.add_paragraph()
                         p.text = para.strip()
         
-        # PowerPointファイル名を生成
+        # PowerPointをバイトストリームに保存
+        pptx_stream = BytesIO()
+        prs.save(pptx_stream)
+        pptx_stream.seek(0)
+        
+        # 一時ファイルを削除
+        os.unlink(temp_png_path)
+        
+        # ファイル名を生成
         if theme:
             # ファイル名に使用できない文字を除去
             theme_part = re.sub(r'[\\/*?:"<>|]', "", theme)
@@ -179,16 +179,7 @@ def svg_to_pptx(svg_code, analysis_text=None, theme=None):
         else:
             filename = f"lp_planning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
         
-        # ダウンロードディレクトリにパスを設定
-        pptx_path = os.path.join(DOWNLOAD_DIR, filename)
-        
-        # PowerPointを保存
-        prs.save(pptx_path)
-        
-        # 一時ファイルを削除
-        os.unlink(temp_png_path)
-        
-        return pptx_path, filename
+        return pptx_stream.getvalue(), filename
     
     except Exception as e:
         error_detail = traceback.format_exc()
@@ -272,10 +263,10 @@ def generate_svg_with_claude(product_theme, analysis_text):
 
 def generate_lp_planning(product_theme):
     """Gemini APIを使用してLP企画のための分析を生成する関数"""
-    global current_svg_code, current_analysis, current_theme, download_link
+    global current_svg_code, current_analysis, current_theme
     
     if not GOOGLE_API_KEY:
-        return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None
+        return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None, None
     
     try:
         # Geminiモデルの生成
@@ -316,33 +307,25 @@ def generate_lp_planning(product_theme):
         current_analysis = analysis_text
         current_theme = product_theme
         
-        # PowerPointを生成してダウンロードリンクを作成
-        pptx_path, filename = svg_to_pptx(svg_code, analysis_text, product_theme)
-        if pptx_path and filename:
-            # 相対パスに変換
-            rel_path = os.path.relpath(pptx_path, os.getcwd())
-            rel_path = rel_path.replace('\\', '/')  # Windowsでも動作するようにパス区切り文字を変換
-            
-            # ダウンロードリンクを作成
-            download_link = f"<a href='/file={rel_path}' download='{filename}' target='_blank' class='download-link'>PowerPointをダウンロード</a>"
-        else:
-            download_link = None
+        # PowerPointファイルを生成
+        pptx_data, filename = svg_to_pptx(svg_code, analysis_text, product_theme)
         
-        return analysis_text, svg_code
+        # ダウンロードリンクの作成
+        download_link = None
+        if pptx_data and filename:
+            # Base64エンコード
+            b64_data = base64.b64encode(pptx_data).decode()
+            download_link = f"""
+            <a href="data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,{b64_data}" 
+               download="{filename}" class="download-link">PowerPointをダウンロード</a>
+            """
+        
+        return analysis_text, svg_code, download_link
         
     except Exception as e:
         error_detail = traceback.format_exc()
         print(f"詳細なエラー情報:\n{error_detail}")
-        return f"エラーが発生しました: {str(e)}", None
-
-def get_download_link():
-    """現在のダウンロードリンクを返す関数"""
-    global download_link
-    
-    if download_link:
-        return download_link
-    else:
-        return "SVGが生成されていないか、PowerPointの作成に失敗しました。"
+        return f"エラーが発生しました: {str(e)}", None, None
 
 def respond(message, history):
     """チャットメッセージに応答する関数"""
@@ -353,15 +336,14 @@ def respond(message, history):
     # LP企画設計モード
     if "LP企画:" in message:
         product_theme = message.replace("LP企画:", "").strip()
-        analysis, svg_code = generate_lp_planning(product_theme)
+        analysis, svg_code, download_link = generate_lp_planning(product_theme)
         
         response = f"### {product_theme} の法人向けLP企画分析\n\n{analysis}"
         
         # チャット履歴に追加
         chat_history.append((message, response))
         
-        # SVGとダウンロードリンクを返す
-        return [(message, response)], svg_code, get_download_link()
+        return [(message, response)], svg_code, download_link
     
     # 通常のチャットモード
     elif "こんにちは" in message or "hello" in message.lower():
@@ -393,11 +375,10 @@ def respond(message, history):
 def clear_chat():
     """チャット履歴をクリアする関数"""
     chat_history.clear()
-    global current_svg_code, current_analysis, current_theme, download_link
+    global current_svg_code, current_analysis, current_theme
     current_svg_code = None
     current_analysis = None
     current_theme = None
-    download_link = None
     return [], None, '<div class="svg-container">SVG図がここに表示されます</div>', None
 
 # Gradio インターフェースの作成
@@ -445,7 +426,7 @@ with gr.Blocks(css="""
         display: inline-block;
         padding: 10px 20px;
         background-color: #28a745;
-        color: white;
+        color: white !important;
         text-decoration: none;
         border-radius: 5px;
         font-weight: bold;
@@ -455,6 +436,7 @@ with gr.Blocks(css="""
     }
     .download-link:hover {
         background-color: #218838;
+        text-decoration: none;
     }
     .download-link:active {
         background-color: #1e7e34;
@@ -521,29 +503,12 @@ with gr.Blocks(css="""
     # クリアボタンのイベント
     clear_btn.click(clear_chat, None, [chatbot, svg_output, svg_output, download_area])
 
-# アプリケーション起動前に古いファイルをクリーンアップ
-def cleanup_old_files():
-    """古いダウンロードファイルをクリーンアップする関数"""
-    try:
-        # 1日以上経過したファイルを削除
-        now = time.time()
-        for f in os.listdir(DOWNLOAD_DIR):
-            f_path = os.path.join(DOWNLOAD_DIR, f)
-            # ファイルの最終更新時間を取得
-            if os.path.isfile(f_path) and os.stat(f_path).st_mtime < now - 86400:  # 24時間以上前
-                os.remove(f_path)
-    except Exception as e:
-        print(f"ファイルクリーンアップ中にエラーが発生しました: {str(e)}")
-
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
         print("警告: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。")
     
     if not ANTHROPIC_API_KEY:
         print("警告: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。")
-    
-    # 古いファイルのクリーンアップ
-    cleanup_old_files()
     
     try:
         demo.launch(share=True)
