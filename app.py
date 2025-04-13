@@ -15,6 +15,11 @@ from pptx.util import Inches, Pt
 from io import BytesIO
 import cairosvg
 from datetime import datetime
+import logging
+
+# ロギングを設定
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Google Gemini API Key設定
 # 実際に使用する際には環境変数から読み込むことをお勧めします
@@ -47,11 +52,29 @@ current_theme = None
 def svg_to_pptx(svg_code, analysis_text=None, theme=None):
     """SVGコードをPowerPointプレゼンテーションに変換する関数"""
     try:
+        # SVGの文字化けを防止するために、エンコーディングを明示的に指定
+        svg_code = svg_code.replace('encoding="UTF-8"', '')  # 既存のエンコーディング宣言があれば削除
+        svg_code = svg_code.replace('<svg', '<svg encoding="UTF-8"', 1)  # 新しいエンコーディング宣言を追加
+        
+        # フォント問題に対処するため、SVGにフォントファミリーを明示的に指定
+        svg_code = re.sub(r'font-family="([^"]*)"', r'font-family="Arial, Helvetica, sans-serif"', svg_code)
+        
+        # デバッグ情報
+        logger.info(f"SVG処理: 長さ {len(svg_code)} のSVGデータを処理します")
+        
         # 一時ファイルを作成してSVGを一時的にPNGに変換
+        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as temp_svg:
+            temp_svg_path = temp_svg.name
+            # UTF-8エンコーディングでSVGファイルを保存
+            with open(temp_svg_path, 'w', encoding='utf-8') as f:
+                f.write(svg_code)
+        
+        # SVGをPNGに変換（一時ファイル経由）
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
             temp_png_path = temp_png.name
-            # SVGをPNGに変換
-            cairosvg.svg2png(bytestring=svg_code.encode('utf-8'), write_to=temp_png_path)
+        
+        # CairoSVGでSVGをPNGに変換
+        cairosvg.svg2png(url=temp_svg_path, write_to=temp_png_path, dpi=150)
         
         # PowerPointプレゼンテーションを作成
         prs = Presentation()
@@ -168,6 +191,7 @@ def svg_to_pptx(svg_code, analysis_text=None, theme=None):
         pptx_stream.seek(0)
         
         # 一時ファイルを削除
+        os.unlink(temp_svg_path)
         os.unlink(temp_png_path)
         
         # ファイル名を生成
@@ -179,11 +203,13 @@ def svg_to_pptx(svg_code, analysis_text=None, theme=None):
         else:
             filename = f"lp_planning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
         
+        logger.info(f"PowerPoint生成完了: {filename}, サイズ: {len(pptx_stream.getvalue())} バイト")
+        
         return pptx_stream.getvalue(), filename
     
     except Exception as e:
         error_detail = traceback.format_exc()
-        print(f"PowerPoint変換中のエラー情報:\n{error_detail}")
+        logger.error(f"PowerPoint変換中のエラー情報:\n{error_detail}")
         return None, None
 
 def generate_svg_with_claude(product_theme, analysis_text):
@@ -213,7 +239,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
         - 企業向けパワーポイントのスライドとしての活用を想定してください
         - プロフェッショナルなカラースキームを使用してください（青系のビジネスカラーが適切です）
         - 明確なタイトル、サブタイトル、箇条書きなどの階層構造を持たせてください
-        - フォントはシンプルで読みやすいサンセリフフォントを使用してください
+        - フォントはシンプルで読みやすいサンセリフフォントを使用してください（例: Arial, Helvetica, sans-serif）
         - 適切なマージンとパディングを取り、余白を効果的に活用してください
         - 図表を使用する場合は、シンプルかつビジネス的な印象のデザインにしてください
         - テキストは必ず枠内に収まるように調整し、はみ出さないようにしてください
@@ -221,6 +247,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
         - フォントサイズは小さくても12px以上を維持してください
         - 3つの観点を全て1つのSVGに包含してください
         - 提供された分析結果の重要なポイントを活用してください
+        - 日本語を含む場合は、文字化けしないように適切なフォントやエンコーディングを指定してください
 
         SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
         コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
@@ -231,7 +258,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
             model="claude-3-7-sonnet-20250219",
             max_tokens=4096,
             temperature=0.2,
-            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。",
+            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -250,15 +277,22 @@ def generate_svg_with_claude(product_theme, analysis_text):
         
         # viewBox属性を調整
         if 'viewBox' not in svg_code:
-            svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"')
+            svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"', 1)
         else:
             svg_code = re.sub(r'viewBox="[^"]+"', 'viewBox="0 0 800 450"', svg_code)
+        
+        # UTF-8エンコーディングを明示的に指定
+        if 'encoding=' not in svg_code:
+            svg_code = svg_code.replace('<svg', '<svg encoding="UTF-8"', 1)
+        
+        # フォントファミリーを明示的に指定
+        svg_code = re.sub(r'font-family="([^"]*)"', r'font-family="Arial, Helvetica, sans-serif"', svg_code)
         
         return svg_code, None
         
     except Exception as e:
         error_detail = traceback.format_exc()
-        print(f"SVG生成中のエラー情報:\n{error_detail}")
+        logger.error(f"SVG生成中のエラー情報:\n{error_detail}")
         return None, f"SVG生成中にエラーが発生しました: {str(e)}"
 
 def generate_lp_planning(product_theme):
@@ -298,7 +332,7 @@ def generate_lp_planning(product_theme):
         
         # SVGに問題があった場合のバックアップSVG
         if not svg_code:
-            svg_code = '<svg width="800" height="450" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial" font-size="18" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
+            svg_code = '<svg width="800" height="450" xmlns="http://www.w3.org/2000/svg" encoding="UTF-8"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
             if svg_error:
                 analysis_text += f"\n\n{svg_error}"
         
@@ -324,7 +358,7 @@ def generate_lp_planning(product_theme):
         
     except Exception as e:
         error_detail = traceback.format_exc()
-        print(f"詳細なエラー情報:\n{error_detail}")
+        logger.error(f"詳細なエラー情報:\n{error_detail}")
         return f"エラーが発生しました: {str(e)}", None, None
 
 def respond(message, history):
