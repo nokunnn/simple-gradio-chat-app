@@ -23,7 +23,7 @@
 ## データ連携型デュアルLLM統合
 このアプリケーションでは、2つの異なるLLMを連携させて活用します：
 
-- **テキスト分析**: Google Gemini 1.5 Pro
+- **テキスト分析**: Google Gemini 2.0 flash
   - 法人向けLP企画の詳細なテキスト分析を生成
 
 - **SVG図表生成**: Anthropic Claude 3.7 Sonnet
