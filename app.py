@@ -229,7 +229,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
         
         # Claude 3.7 Sonnetからの応答を取得
         response = claude_client.messages.create(
-            model="claude-3-7-sonnet",
+            model="claude-3-7-sonnet-latest",
             max_tokens=4096,
             temperature=0.2,
             system="提供された分析結果に基づいて、その内容を要約したスライドデータをSVG形式で作成してください。サイズは16:9の比率で設定してください。SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください",
