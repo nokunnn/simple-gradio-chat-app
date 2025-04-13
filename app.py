@@ -114,7 +114,7 @@ def generate_lp_planning(product_theme):
     
     try:
         # Geminiモデルの生成
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # プロンプトテンプレート
         prompt = f"""
