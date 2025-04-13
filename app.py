@@ -43,8 +43,6 @@ current_svg_code = None
 current_analysis = None
 # 現在の商品/サービステーマ
 current_theme = None
-# 現在のPowerPointファイル
-current_pptx = None
 
 def svg_to_pptx(svg_code, analysis_text=None, theme=None):
     """SVGコードをPowerPointプレゼンテーションに変換する関数"""
@@ -164,15 +162,16 @@ def svg_to_pptx(svg_code, analysis_text=None, theme=None):
                         p = tf.add_paragraph()
                         p.text = para.strip()
         
-        # PowerPointをバイトストリームに保存
-        pptx_stream = BytesIO()
-        prs.save(pptx_stream)
-        pptx_stream.seek(0)
+        # PowerPointを一時ファイルに保存
+        temp_pptx = tempfile.NamedTemporaryFile(suffix='.pptx', delete=False)
+        temp_pptx_path = temp_pptx.name
+        temp_pptx.close()
+        prs.save(temp_pptx_path)
         
         # 一時ファイルを削除
         os.unlink(temp_png_path)
         
-        return pptx_stream
+        return temp_pptx_path
     
     except Exception as e:
         error_detail = traceback.format_exc()
@@ -256,7 +255,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
 
 def generate_lp_planning(product_theme):
     """Gemini APIを使用してLP企画のための分析を生成する関数"""
-    global current_svg_code, current_analysis, current_theme, current_pptx
+    global current_svg_code, current_analysis, current_theme
     
     if not GOOGLE_API_KEY:
         return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None
@@ -299,11 +298,6 @@ def generate_lp_planning(product_theme):
         current_svg_code = svg_code
         current_analysis = analysis_text
         current_theme = product_theme
-        
-        # PowerPointを生成して保存
-        pptx_data = svg_to_pptx(svg_code, analysis_text, product_theme)
-        if pptx_data:
-            current_pptx = pptx_data
         
         return analysis_text, svg_code
         
@@ -374,33 +368,31 @@ def respond(message, history):
 def clear_chat():
     """チャット履歴をクリアする関数"""
     chat_history.clear()
-    global current_svg_code, current_analysis, current_theme, current_pptx
+    global current_svg_code, current_analysis, current_theme
     current_svg_code = None
     current_analysis = None
     current_theme = None
-    current_pptx = None
     return [], None, '<div class="svg-container">SVG図がここに表示されます</div>', gr.update(interactive=False)
 
 def create_pptx_for_download():
     """現在のSVGからPowerPointを生成してダウンロード用に返す関数"""
-    global current_svg_code, current_analysis, current_theme, current_pptx
-    
-    # すでに生成済みのPPTXがあればそれを使用
-    if current_pptx is not None:
-        return (current_pptx, get_pptx_filename())
+    global current_svg_code, current_analysis, current_theme
     
     # SVGがない場合はNoneを返す
     if current_svg_code is None:
         return None
     
     try:
-        # PowerPointを生成
-        pptx_stream = svg_to_pptx(current_svg_code, current_analysis, current_theme)
-        if pptx_stream:
-            current_pptx = pptx_stream  # 生成したものを保存
-            return (pptx_stream, get_pptx_filename())
-        else:
+        # PowerPointを生成して一時ファイルとして保存
+        pptx_path = svg_to_pptx(current_svg_code, current_analysis, current_theme)
+        if not pptx_path:
+            print("PowerPointファイルの生成に失敗しました")
             return None
+        
+        # ファイル名の生成
+        filename = get_pptx_filename()
+        
+        return (pptx_path, filename)
     except Exception as e:
         error_detail = traceback.format_exc()
         print(f"PPTX生成中のエラー情報:\n{error_detail}")
@@ -487,6 +479,7 @@ with gr.Blocks(css="""
         # ダウンロードボタンとファイル出力
         with gr.Row(elem_classes="button-row"):
             download_btn = gr.Button("PowerPointをダウンロード", elem_classes="dl-button", interactive=False)
+            pptx_file = gr.File(label="PowerPointファイル", visible=False)
         
         with gr.Row(elem_classes="input-area"):
             txt = gr.Textbox(
@@ -498,9 +491,6 @@ with gr.Blocks(css="""
             submit_btn = gr.Button("送信", scale=1)
     
         clear_btn = gr.Button("会話をクリア")
-    
-    # ダウンロードコンポーネント
-    pptx_file = gr.File(label="PowerPointファイル", interactive=False)
     
     # イベントの設定
     # メッセージ送信イベント（テキストボックスからのEnter）
@@ -531,7 +521,7 @@ with gr.Blocks(css="""
     )
     
     # クリアボタンのイベント
-    clear_btn.click(clear_chat, None, [chatbot, pptx_file, svg_output, download_btn])
+    clear_btn.click(clear_chat, None, [chatbot, svg_output, svg_output, download_btn])
 
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
