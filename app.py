@@ -220,7 +220,6 @@ def generate_svg_with_claude(product_theme, analysis_text):
     try:
         # Claude 3.7 Sonnetへのプロンプト
         prompt = f"""
-        あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
         以下の商品/サービステーマとその分析に基づいて、法人向けLPの企画設計のためのSVGスライドを作成してください。
 
         商品/サービステーマ: {product_theme}
