@@ -142,7 +142,7 @@ def create_app():
             
             **使い方**: 
             - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
-            - LP分析とSVG図の両方がGemini AIを使って生成されます
+            - LP分析にはGemini Flash、SVG図にはGemini 1.5 Proを使用します
             - 生成したSVG図はPowerPointファイルとしてダウンロードできます
             - 通常のチャットには、普通にメッセージを入力してください
             
