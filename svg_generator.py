@@ -57,7 +57,7 @@ def generate_svg_with_claude(product_theme, analysis_text):
         with claude_client.messages.stream(
             model="claude-3-7-sonnet-20250219",
             max_tokens=128000,  # 最大トークン長を128kに拡張
-            temperature=0.05,
+            temperature=0.1,
             system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
             messages=[
                 {"role": "user", "content": prompt}
