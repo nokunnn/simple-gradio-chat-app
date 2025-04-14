@@ -259,8 +259,8 @@ def generate_svg_with_claude(product_theme, analysis_text):
         # Claude 3.7 Sonnetからの応答を取得
         response = claude_client.messages.create(
             model="claude-3-7-sonnet-20250219",
-            max_tokens=4096,
-            temperature=0.2,
+            max_tokens=8192,
+            temperature=0.1,
             system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
             messages=[
                 {"role": "user", "content": prompt}
