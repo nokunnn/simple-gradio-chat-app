@@ -1,13 +1,12 @@
 """
 法人向けLP企画設計チャットアプリ
-このアプリは、GradioとLLM（Gemini API、Claude API）を使用して
+このアプリは、GradioとGemini APIを使用して
 法人向けランディングページの企画設計をサポートします。
 """
 import gradio as gr
 import traceback
 from utils import (
     GOOGLE_API_KEY, 
-    ANTHROPIC_API_KEY, 
     chat_history, 
     current_svg_code, 
     current_analysis, 
@@ -143,8 +142,7 @@ def create_app():
             
             **使い方**: 
             - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
-            - テキスト分析はGoogle Gemini、SVG図はAnthropic Claudeで生成します
-            - SVG図はGeminiの分析結果に基づいて生成されます
+            - LP分析とSVG図の両方がGemini AIを使って生成されます
             - 生成したSVG図はPowerPointファイルとしてダウンロードできます
             - 通常のチャットには、普通にメッセージを入力してください
             
@@ -202,9 +200,6 @@ def create_app():
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
         print("警告: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。")
-    
-    if not ANTHROPIC_API_KEY:
-        print("警告: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。")
     
     try:
         app = create_app()
