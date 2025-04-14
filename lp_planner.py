@@ -1,7 +1,7 @@
 """Gemini APIを使用したLP企画設計の分析機能"""
 import google.generativeai as genai
 from utils import GOOGLE_API_KEY, log_error, logger
-from svg_generator import generate_svg_with_claude, get_backup_svg
+from svg_generator import generate_svg_with_gemini, get_backup_svg
 from pptx_converter import svg_to_pptx, create_download_link
 import utils
 
@@ -40,8 +40,8 @@ def generate_lp_planning(product_theme):
         # 応答から分析部分を取得
         analysis_text = response.text
         
-        # Claudeを使ってSVGを生成（Geminiの分析結果を渡す）
-        svg_code, svg_error = generate_svg_with_claude(product_theme, analysis_text)
+        # Gemini 2.5 Proを使ってSVGを生成（Geminiの分析結果を渡す）
+        svg_code, svg_error = generate_svg_with_gemini(product_theme, analysis_text)
         
         # SVGに問題があった場合のバックアップSVG
         if not svg_code:
