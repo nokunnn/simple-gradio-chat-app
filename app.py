@@ -1,369 +1,20 @@
+"""
+法人向けLP企画設計チャットアプリ
+このアプリは、GradioとLLM（Gemini API、Claude API）を使用して
+法人向けランディングページの企画設計をサポートします。
+"""
 import gradio as gr
-import os
-import json
-import google.generativeai as genai
-import anthropic  # Added for Claude 3.7 Sonnet API
-from pathlib import Path
-import io
-import base64
-import re
 import traceback
-import time
-import tempfile
-from pptx import Presentation
-from pptx.util import Inches, Pt
-from io import BytesIO
-import cairosvg
-from datetime import datetime
-import logging
-
-# ロギングを設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Google Gemini API Key設定
-# 実際に使用する際には環境変数から読み込むことをお勧めします
-# os.environ["GOOGLE_API_KEY"] = "あなたのAPIキーをここに入力"
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-
-# Anthropic Claude API Key設定
-# 実際に使用する際には環境変数から読み込むことをお勧めします
-# os.environ["ANTHROPIC_API_KEY"] = "あなたのAPIキーをここに入力"
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-# Gemini APIの設定
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-
-# Claude APIの設定
-claude_client = None
-if ANTHROPIC_API_KEY:
-    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-# チャット履歴を保存するリスト
-chat_history = []
-# 現在のSVGコードを保存する変数
-current_svg_code = None
-# 現在の分析テキスト
-current_analysis = None
-# 現在の商品/サービステーマ
-current_theme = None
-
-def svg_to_pptx(svg_code, analysis_text=None, theme=None):
-    """SVGコードをPowerPointプレゼンテーションに変換する関数"""
-    try:
-        # SVGの文字化けを防止するために、エンコーディングを明示的に指定
-        svg_code = svg_code.replace('encoding="UTF-8"', '')  # 既存のエンコーディング宣言があれば削除
-        svg_code = svg_code.replace('<svg', '<svg encoding="UTF-8"', 1)  # 新しいエンコーディング宣言を追加
-        
-        # フォント問題に対処するため、SVGにフォントファミリーを明示的に指定
-        svg_code = re.sub(r'font-family="([^"]*)"', r'font-family="Arial, Helvetica, sans-serif"', svg_code)
-        
-        # デバッグ情報
-        logger.info(f"SVG処理: 長さ {len(svg_code)} のSVGデータを処理します")
-        
-        # 一時ファイルを作成してSVGを一時的にPNGに変換
-        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as temp_svg:
-            temp_svg_path = temp_svg.name
-            # UTF-8エンコーディングでSVGファイルを保存
-            with open(temp_svg_path, 'w', encoding='utf-8') as f:
-                f.write(svg_code)
-        
-        # SVGをPNGに変換（一時ファイル経由）
-        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as temp_png:
-            temp_png_path = temp_png.name
-        
-        # CairoSVGでSVGをPNGに変換
-        cairosvg.svg2png(url=temp_svg_path, write_to=temp_png_path, dpi=150)
-        
-        # PowerPointプレゼンテーションを作成
-        prs = Presentation()
-        
-        # 16:9のスライドマスターを選択
-        slide_layout = prs.slide_layouts[5]  # 白紙レイアウト
-        
-        # タイトルスライドを追加
-        title_slide = prs.slides.add_slide(prs.slide_layouts[0])
-        title = title_slide.shapes.title
-        subtitle = title_slide.placeholders[1]
-        
-        # タイトルとサブタイトルを設定
-        if theme:
-            title.text = f"{theme} - LP企画設計"
-        else:
-            title.text = "LP企画設計 - 提案資料"
-        
-        subtitle.text = f"作成日時: {datetime.now().strftime('%Y年%m月%d日')}"
-        
-        # SVG画像を含むスライドを追加
-        slide = prs.slides.add_slide(slide_layout)
-        
-        # スライドタイトルを追加（オプション）
-        if hasattr(slide, 'shapes') and hasattr(slide.shapes, 'title'):
-            title_shape = slide.shapes.title
-            if title_shape:
-                title_shape.text = "LP企画 - ビジュアル提案"
-        
-        # 画像を追加
-        left = Inches(0.5)
-        top = Inches(1.0)
-        height = Inches(5.0)  # 高さ指定（縦横比は自動調整）
-        slide.shapes.add_picture(temp_png_path, left, top, height=height)
-        
-        # 分析テキストがある場合は、テキストスライドを追加
-        if analysis_text:
-            # 分析テキストをパラグラフに分割
-            paragraphs = analysis_text.split('\n\n')
-            
-            # 各パラグラフを適切なサイズに分割してスライドに追加
-            current_paragraphs = []
-            for paragraph in paragraphs:
-                if paragraph.strip():
-                    # 段落が見出しの場合は新しいスライドに
-                    if paragraph.startswith('# ') or paragraph.startswith('## ') or paragraph.startswith('### '):
-                        # 既存の段落があれば、スライドに追加
-                        if current_paragraphs:
-                            text_slide = prs.slides.add_slide(prs.slide_layouts[1])  # テキスト付きレイアウト
-                            title_shape = text_slide.shapes.title
-                            title_shape.text = current_paragraphs[0].replace('#', '').strip()
-                            
-                            # 本文テキストを追加
-                            body_shape = text_slide.placeholders[1]
-                            tf = body_shape.text_frame
-                            tf.text = ""
-                            
-                            for i, para in enumerate(current_paragraphs[1:]):
-                                if i == 0:
-                                    tf.text = para.strip()
-                                else:
-                                    p = tf.add_paragraph()
-                                    p.text = para.strip()
-                            
-                            current_paragraphs = [paragraph]
-                        else:
-                            current_paragraphs = [paragraph]
-                    else:
-                        current_paragraphs.append(paragraph)
-                        
-                        # 段落が5つを超えたら新しいスライドに
-                        if len(current_paragraphs) > 5:
-                            text_slide = prs.slides.add_slide(prs.slide_layouts[1])
-                            title_shape = text_slide.shapes.title
-                            title_shape.text = "分析とポイント"
-                            
-                            body_shape = text_slide.placeholders[1]
-                            tf = body_shape.text_frame
-                            tf.text = ""
-                            
-                            for i, para in enumerate(current_paragraphs):
-                                if i == 0:
-                                    tf.text = para.strip()
-                                else:
-                                    p = tf.add_paragraph()
-                                    p.text = para.strip()
-                            
-                            current_paragraphs = []
-            
-            # 残りの段落があれば、スライドに追加
-            if current_paragraphs:
-                text_slide = prs.slides.add_slide(prs.slide_layouts[1])
-                title_shape = text_slide.shapes.title
-                if current_paragraphs[0].startswith('#'):
-                    title_shape.text = current_paragraphs[0].replace('#', '').strip()
-                    current_paragraphs = current_paragraphs[1:]
-                else:
-                    title_shape.text = "分析とポイント"
-                
-                body_shape = text_slide.placeholders[1]
-                tf = body_shape.text_frame
-                tf.text = ""
-                
-                for i, para in enumerate(current_paragraphs):
-                    if i == 0:
-                        tf.text = para.strip()
-                    else:
-                        p = tf.add_paragraph()
-                        p.text = para.strip()
-        
-        # PowerPointをバイトストリームに保存
-        pptx_stream = BytesIO()
-        prs.save(pptx_stream)
-        pptx_stream.seek(0)
-        
-        # 一時ファイルを削除
-        os.unlink(temp_svg_path)
-        os.unlink(temp_png_path)
-        
-        # ファイル名を生成
-        if theme:
-            # ファイル名に使用できない文字を除去
-            theme_part = re.sub(r'[\\/*?:"<>|]', "", theme)
-            theme_part = theme_part.replace(' ', '_').lower()[:30]
-            filename = f"lp_planning_{theme_part}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
-        else:
-            filename = f"lp_planning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pptx"
-        
-        logger.info(f"PowerPoint生成完了: {filename}, サイズ: {len(pptx_stream.getvalue())} バイト")
-        
-        return pptx_stream.getvalue(), filename
-    
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        logger.error(f"PowerPoint変換中のエラー情報:\n{error_detail}")
-        return None, None
-
-def generate_svg_with_claude(product_theme, analysis_text):
-    """Claude 3.7 SonnetにGeminiの分析結果を渡してSVGを生成する関数"""
-    if not ANTHROPIC_API_KEY or not claude_client:
-        return None, "エラー: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。"
-    
-    try:
-        # Claude 3.7 Sonnetへのプロンプト
-        prompt = f"""
-        あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
-        以下の商品/サービステーマとその分析に基づいて、法人向けLPの企画設計のためのSVGスライドを作成してください。
-
-        商品/サービステーマ: {product_theme}
-
-        Gemini AIによる分析結果:
-        {analysis_text}
-
-        上記の分析結果に基づいて、以下の3つの観点を含むSVGスライドを作成してください:
-         1. ターゲットの分析: このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのか
-         2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
-         3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
- 
-         SVG要件:
-         - サイズは16:9の比率で設定してください（width="800" height="450"）
-         - ビジネス文書・プレゼンテーションとしての体裁を重視してください
-         - 企業向けパワーポイントのスライドとしての活用を想定してください
-         - プロフェッショナルなカラースキームを使用してください（青系のビジネスカラーが適切です）
-         - 明確なタイトル、サブタイトル、箇条書きなどの階層構造を持たせてください
-         - フォントはシンプルで読みやすいサンセリフフォントを使用してください（例: Arial, Helvetica, sans-serif）
-         - 適切なマージンとパディングを取り、余白を効果的に活用してください
-         - 図表を使用する場合は、シンプルかつビジネス的な印象のデザインにしてください
-         - テキストは必ず枠内に収まるように調整し、はみ出さないようにしてください
-         - 情報量は適切に調整し、文字が小さくなり過ぎないようにしてください
-         - フォントサイズは小さくても12px以上を維持してください
-         - 3つの観点を全て1つのSVGに包含してください
-         - 提供された分析結果の重要なポイントを活用してください
-         - 日本語を含む場合は、文字化けしないように適切なフォントやエンコーディングを指定してください
- 
-         上記の分析結果の内容を要約して、SVG形式の１枚のスライドにまとめて。
-         サイズは16:9の比率で設定してください（width="800" height="450"）
-         
-         SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
-         コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
-        """
-        
-        # Claude 3.7 Sonnetからの応答を取得
-        response = claude_client.messages.create(
-            model="claude-3-7-sonnet-20250219",
-            max_tokens=8192,
-            temperature=0.1,
-            system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # 応答からSVGコードを抽出
-        svg_text = response.content[0].text
-        
-        # SVGコードを抽出（Claude 3.7はほぼ確実に正確なSVGを返すはずですが、念のため）
-        svg_match = re.search(r'<svg[\s\S]*?<\/svg>', svg_text)
-        svg_code = svg_match.group(0) if svg_match else svg_text
-        
-        # SVGのサイズを800x450（16:9）に変更
-        svg_code = re.sub(r'width="[0-9]+"', 'width="800"', svg_code)
-        svg_code = re.sub(r'height="[0-9]+"', 'height="450"', svg_code)
-        
-        # viewBox属性を調整
-        if 'viewBox' not in svg_code:
-            svg_code = svg_code.replace('<svg', '<svg viewBox="0 0 800 450"', 1)
-        else:
-            svg_code = re.sub(r'viewBox="[^"]+"', 'viewBox="0 0 800 450"', svg_code)
-        
-        # UTF-8エンコーディングを明示的に指定
-        if 'encoding=' not in svg_code:
-            svg_code = svg_code.replace('<svg', '<svg encoding="UTF-8"', 1)
-        
-        # フォントファミリーを明示的に指定
-        svg_code = re.sub(r'font-family="([^"]*)"', r'font-family="Arial, Helvetica, sans-serif"', svg_code)
-        
-        return svg_code, None
-        
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        logger.error(f"SVG生成中のエラー情報:\n{error_detail}")
-        return None, f"SVG生成中にエラーが発生しました: {str(e)}"
-
-def generate_lp_planning(product_theme):
-    """Gemini APIを使用してLP企画のための分析を生成する関数"""
-    global current_svg_code, current_analysis, current_theme
-    
-    if not GOOGLE_API_KEY:
-        return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None, None
-    
-    try:
-        # Geminiモデルの生成
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        # プロンプトテンプレート
-        prompt = f"""
-        あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
-        以下の商品/サービステーマに対して、法人向けLPの企画設計を行ってください。
-        なお、検討結果については1000字以内でまとめてください。
-
-        商品/サービステーマ: {product_theme}
-
-        以下の3つの観点から分析してください:
-        1. ターゲットの分析: このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのか
-        2. 訴求軸の検討: 商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題
-        3. 訴求シナリオの検討: LPで情報を伝達する最適な順序、各セクションで伝えるべき内容
-
-        詳細な分析について説明し、具体的な提案を含めてください。
-        """
-        
-        # Geminiからの応答を取得
-        response = model.generate_content(prompt)
-        
-        # 応答から分析部分を取得
-        analysis_text = response.text
-        
-        # Claudeを使ってSVGを生成（Geminiの分析結果を渡す）
-        svg_code, svg_error = generate_svg_with_claude(product_theme, analysis_text)
-        
-        # SVGに問題があった場合のバックアップSVG
-        if not svg_code:
-            svg_code = '<svg width="800" height="450" xmlns="http://www.w3.org/2000/svg" encoding="UTF-8"><rect width="100%" height="100%" fill="#f8f9fa"/><text x="50%" y="50%" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#dc3545">SVGデータの生成に失敗しました。もう一度お試しください。</text></svg>'
-            if svg_error:
-                analysis_text += f"\n\n{svg_error}"
-        
-        # グローバル変数に保存
-        current_svg_code = svg_code
-        current_analysis = analysis_text
-        current_theme = product_theme
-        
-        # PowerPointファイルを生成
-        pptx_data, filename = svg_to_pptx(svg_code, analysis_text, product_theme)
-        
-        # ダウンロードリンクの作成
-        download_link = None
-        if pptx_data and filename:
-            # Base64エンコード
-            b64_data = base64.b64encode(pptx_data).decode()
-            download_link = f"""
-            <a href="data:application/vnd.openxmlformats-officedocument.presentationml.presentation;base64,{b64_data}" 
-               download="{filename}" class="download-link">PowerPointをダウンロード</a>
-            """
-        
-        return analysis_text, svg_code, download_link
-        
-    except Exception as e:
-        error_detail = traceback.format_exc()
-        logger.error(f"詳細なエラー情報:\n{error_detail}")
-        return f"エラーが発生しました: {str(e)}", None, None
+from utils import (
+    GOOGLE_API_KEY, 
+    ANTHROPIC_API_KEY, 
+    chat_history, 
+    current_svg_code, 
+    current_analysis, 
+    current_theme,
+    logger
+)
+from lp_planner import generate_lp_planning
 
 def respond(message, history):
     """チャットメッセージに応答する関数"""
@@ -419,8 +70,8 @@ def clear_chat():
     current_theme = None
     return [], None, '<div class="svg-container">SVG図がここに表示されます</div>', None
 
-# Gradio インターフェースの作成
-with gr.Blocks(css="""
+# CSSスタイル
+CSS = """
     .svg-container { 
         margin: 10px auto;
         border: 1px solid #ccc; 
@@ -479,67 +130,74 @@ with gr.Blocks(css="""
     .download-link:active {
         background-color: #1e7e34;
     }
-""") as demo:
-    with gr.Column(elem_classes="title-area"):
-        gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
-        gr.Markdown("""
-        このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
+"""
+
+# Gradio インターフェースの作成
+def create_app():
+    """Gradioアプリケーションを作成する"""
+    with gr.Blocks(css=CSS) as demo:
+        with gr.Column(elem_classes="title-area"):
+            gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
+            gr.Markdown("""
+            このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
+            
+            **使い方**: 
+            - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
+            - テキスト分析はGoogle Gemini、SVG図はAnthropic Claudeで生成します
+            - SVG図はGeminiの分析結果に基づいて生成されます
+            - 生成したSVG図はPowerPointファイルとしてダウンロードできます
+            - 通常のチャットには、普通にメッセージを入力してください
+            
+            **例**: 「LP企画: クラウドセキュリティサービス」
+            """)
         
-        **使い方**: 
-        - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
-        - テキスト分析はGoogle Gemini、SVG図はAnthropic Claudeで生成します
-        - SVG図はGeminiの分析結果に基づいて生成されます
-        - 生成したSVG図はPowerPointファイルとしてダウンロードできます
-        - 通常のチャットには、普通にメッセージを入力してください
-        
-        **例**: 「LP企画: クラウドセキュリティサービス」
-        """)
-    
-    with gr.Column(elem_classes="responsive-layout"):
-        # チャットエリア
-        chatbot = gr.Chatbot(
-            [],
-            elem_id="chatbot",
-            elem_classes="chat-area",
-            bubble_full_width=False,
-            avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-            height=350
-        )
-        
-        # SVG出力エリア
-        svg_output = gr.HTML(
-            value='<div class="svg-container">SVG図がここに表示されます</div>', 
-            elem_id="svg-output"
-        )
-        
-        # ダウンロードボタン/リンク表示エリア
-        download_area = gr.HTML(
-            value='', 
-            elem_id="download-area"
-        )
-        
-        with gr.Row(elem_classes="input-area"):
-            txt = gr.Textbox(
-                scale=4,
-                show_label=False,
-                placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
-                container=False,
+        with gr.Column(elem_classes="responsive-layout"):
+            # チャットエリア
+            chatbot = gr.Chatbot(
+                [],
+                elem_id="chatbot",
+                elem_classes="chat-area",
+                bubble_full_width=False,
+                avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
+                height=350
             )
-            submit_btn = gr.Button("送信", scale=1)
+            
+            # SVG出力エリア
+            svg_output = gr.HTML(
+                value='<div class="svg-container">SVG図がここに表示されます</div>', 
+                elem_id="svg-output"
+            )
+            
+            # ダウンロードボタン/リンク表示エリア
+            download_area = gr.HTML(
+                value='', 
+                elem_id="download-area"
+            )
+            
+            with gr.Row(elem_classes="input-area"):
+                txt = gr.Textbox(
+                    scale=4,
+                    show_label=False,
+                    placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
+                    container=False,
+                )
+                submit_btn = gr.Button("送信", scale=1)
+        
+            clear_btn = gr.Button("会話をクリア")
+        
+        # イベントの設定
+        # メッセージ送信イベント（テキストボックスからのEnter）
+        txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output, download_area], queue=False)
+        txt_submit_event.then(lambda: "", None, txt)
+        
+        # メッセージ送信イベント（ボタンクリック）
+        submit_click_event = submit_btn.click(respond, [txt, chatbot], [chatbot, svg_output, download_area], queue=False)
+        submit_click_event.then(lambda: "", None, txt)
+        
+        # クリアボタンのイベント
+        clear_btn.click(clear_chat, None, [chatbot, svg_output, svg_output, download_area])
     
-        clear_btn = gr.Button("会話をクリア")
-    
-    # イベントの設定
-    # メッセージ送信イベント（テキストボックスからのEnter）
-    txt_submit_event = txt.submit(respond, [txt, chatbot], [chatbot, svg_output, download_area], queue=False)
-    txt_submit_event.then(lambda: "", None, txt)
-    
-    # メッセージ送信イベント（ボタンクリック）
-    submit_click_event = submit_btn.click(respond, [txt, chatbot], [chatbot, svg_output, download_area], queue=False)
-    submit_click_event.then(lambda: "", None, txt)
-    
-    # クリアボタンのイベント
-    clear_btn.click(clear_chat, None, [chatbot, svg_output, svg_output, download_area])
+    return demo
 
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
@@ -549,7 +207,8 @@ if __name__ == "__main__":
         print("警告: Anthropic API Keyが設定されていません。環境変数ANTHROPIC_API_KEYを設定してください。")
     
     try:
-        demo.launch(share=True)
+        app = create_app()
+        app.launch(share=True)
     except Exception as e:
         error_detail = traceback.format_exc()
         print(f"アプリケーション起動中にエラーが発生しました: {str(e)}")
