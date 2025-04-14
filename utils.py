@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 # API キー設定
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # グローバル変数
 chat_history = []
