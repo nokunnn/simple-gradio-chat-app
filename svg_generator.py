@@ -6,7 +6,11 @@ from utils import ANTHROPIC_API_KEY, log_error, logger
 # Claude APIの設定
 claude_client = None
 if ANTHROPIC_API_KEY:
-    claude_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    claude_client = anthropic.Anthropic(
+        api_key=ANTHROPIC_API_KEY,
+        # ベータヘッダーをここでクライアント初期化時に追加
+        default_headers={"anthropic-beta": "output-128k-2025-02-19"}
+    )
 
 def generate_svg_with_claude(product_theme, analysis_text):
     """Claude 3.7 SonnetにGeminiの分析結果を渡してSVGを生成する関数"""
@@ -61,9 +65,8 @@ def generate_svg_with_claude(product_theme, analysis_text):
             system="あなたは、SVGフォーマットの高品質なビジネスプレゼンテーションスライドを作成する専門家です。提供された分析結果に基づいて、法人向けLPの企画設計のためのSVGを作成してください。日本語を含むテキストが文字化けしないよう注意してください。",
             messages=[
                 {"role": "user", "content": prompt}
-            ],
-            # ベータヘッダーを追加して128kトークン出力を有効化
-            beta_headers={"output-128k-2025-02-19": "true"}
+            ]
+            # beta_headersはクライアント初期化時に設定
         ) as stream:
             # ストリーミングレスポンスを集約
             for text in stream.text_stream:
