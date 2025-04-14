@@ -1,4 +1,4 @@
-"""Gemini 2.5 Proを使用したSVG生成機能"""
+"""Gemini 1.5 Proを使用したSVG生成機能"""
 import re
 import google.generativeai as genai
 from utils import GOOGLE_API_KEY, log_error, logger
@@ -8,15 +8,15 @@ if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
 def generate_svg_with_gemini(product_theme, analysis_text):
-    """Gemini 2.5 ProにGeminiの分析結果を渡してSVGを生成する関数"""
+    """Gemini 1.5 ProにGeminiの分析結果を渡してSVGを生成する関数"""
     if not GOOGLE_API_KEY:
         return None, "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。"
     
     try:
-        # Gemini 2.5 Pro モデルの初期化
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        # Gemini 1.5 Pro モデルの初期化
+        model = genai.GenerativeModel('gemini-1.5-pro')
         
-        # Gemini 2.5 Proへのプロンプト
+        # Gemini 1.5 Proへのプロンプト
         prompt = f"""
         あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
         以下の商品/サービステーマとその分析に基づいて、法人向けLPの企画設計のためのSVGスライドを作成してください。
@@ -54,7 +54,7 @@ def generate_svg_with_gemini(product_theme, analysis_text):
          コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
         """
         
-        # Gemini 2.5 Proからの応答を取得
+        # Gemini 1.5 Proからの応答を取得
         response = model.generate_content(
             prompt,
             generation_config={
