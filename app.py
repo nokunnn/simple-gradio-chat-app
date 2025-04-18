@@ -19,35 +19,65 @@ from utils import (
     clean_temp_files
 )
 from lp_planner import generate_lp_planning
+from csv_analyzer import analyze_csv, get_csv_insights_for_lp_planning
+
+def analyze_uploaded_csv(csv_file):
+    """アップロードされたCSVファイルを分析する関数"""
+    if not csv_file:
+        return "CSVファイルがアップロードされていません。"
+    
+    # CSVファイルを分析
+    csv_analysis = analyze_csv(csv_file)
+    
+    if not csv_analysis.get("success", False):
+        error_msg = csv_analysis.get("error", "不明なエラー")
+        return f"CSVファイルの分析中にエラーが発生しました: {error_msg}"
+    
+    # 分析結果を表示用のテキストとして返す
+    return csv_analysis.get("display_text", "分析結果がありません。")
 
 def respond(message, history, csv_file=None, svg_file=None):
     """チャットメッセージに応答する関数"""
     # 入力が空の場合は何も返さない
     if not message.strip():
-        return [], None, None
-
+        return [], None, None, None
+    
     # ファイルがアップロードされた場合は保存
     csv_path = None
     svg_path = None
+    csv_analysis = None
+    csv_insights = None
+    csv_analysis_text = None
+    
     if csv_file is not None:
-        csv_path = save_uploaded_file(csv_file, "csv")
+        csv_path = csv_file  # すでにパスが得られている
         logger.info(f"CSVファイルが保存されました: {csv_path}")
+        
+        # CSVファイルを分析
+        csv_analysis = analyze_csv(csv_path)
+        if csv_analysis.get("success", False):
+            csv_analysis_text = csv_analysis.get("display_text", "")
+            csv_insights = get_csv_insights_for_lp_planning(csv_analysis)
+            logger.info("CSVファイルの分析が完了しました")
+        else:
+            csv_analysis_text = f"CSVファイルの分析中にエラーが発生しました: {csv_analysis.get('error', '不明なエラー')}"
+            logger.error(f"CSVファイルの分析中にエラーが発生しました: {csv_analysis.get('error', '不明なエラー')}")
     
     if svg_file is not None:
-        svg_path = save_uploaded_file(svg_file, "svg")
+        svg_path = svg_file  # すでにパスが得られている
         logger.info(f"SVGファイルが保存されました: {svg_path}")
     
     # LP企画設計モード
     if "LP企画:" in message:
         product_theme = message.replace("LP企画:", "").strip()
-        analysis, svg_code, download_link = generate_lp_planning(product_theme, csv_path, svg_path)
+        analysis, svg_code, download_link = generate_lp_planning(product_theme, csv_insights, svg_path)
         
         response = f"### {product_theme} の法人向けLP企画分析\n\n{analysis}"
         
         # チャット履歴に追加
         chat_history.append((message, response))
         
-        return [(message, response)], svg_code, download_link
+        return [(message, response)], svg_code, download_link, csv_analysis_text
     
     # 通常のチャットモード
     elif "こんにちは" in message or "hello" in message.lower():
@@ -77,7 +107,7 @@ def respond(message, history, csv_file=None, svg_file=None):
     # チャット履歴に追加
     chat_history.append((message, response))
     
-    return [(message, response)], None, None
+    return [(message, response)], None, None, csv_analysis_text
 
 def clear_chat():
     """チャット履歴をクリアする関数"""
@@ -88,6 +118,19 @@ def clear_chat():
     current_theme = None
     clean_temp_files()  # 一時ファイルを削除
     return [], None, '<div class="svg-container">SVG図がここに表示されます</div>', None, None, None
+
+def on_csv_upload(csv_file):
+    """CSVファイルがアップロードされたときの処理"""
+    if not csv_file:
+        return None, "CSVファイルがアップロードされていません。"
+    
+    csv_analysis = analyze_csv(csv_file)
+    
+    if not csv_analysis.get("success", False):
+        error_msg = csv_analysis.get("error", "不明なエラー")
+        return csv_file, f"CSVファイルの分析中にエラーが発生しました: {error_msg}"
+    
+    return csv_file, csv_analysis.get("display_text", "分析結果がありません。")
 
 # CSSスタイル
 CSS = """
@@ -156,6 +199,28 @@ CSS = """
     .download-link:active {
         background-color: #1e7e34;
     }
+    .csv-analysis-area {
+        margin-top: 15px;
+        padding: 15px;
+        border: 1px solid #d0e3ff;
+        border-radius: 5px;
+        background-color: #f0f7ff;
+        overflow-y: auto;
+        max-height: 350px;
+    }
+    .csv-analysis-area h2 {
+        color: #0056b3;
+        font-size: 1.2rem;
+        margin-top: 0;
+    }
+    .csv-analysis-area h3 {
+        color: #0069d9;
+        font-size: 1.1rem;
+        margin-top: 10px;
+    }
+    .csv-analysis-area ul {
+        margin-top: 5px;
+    }
 """
 
 # Gradio インターフェースの作成
@@ -177,60 +242,80 @@ def create_app():
             **例**: 「LP企画: クラウドセキュリティサービス」
             """)
         
-        with gr.Column(elem_classes="responsive-layout"):
-            # チャットエリア
-            chatbot = gr.Chatbot(
-                [],
-                elem_id="chatbot",
-                elem_classes="chat-area",
-                bubble_full_width=False,
-                avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-                height=350
-            )
-            
-            # SVG出力エリア
-            svg_output = gr.HTML(
-                value='<div class="svg-container">SVG図がここに表示されます</div>', 
-                elem_id="svg-output"
-            )
-            
-            # ダウンロードボタン/リンク表示エリア
-            download_area = gr.HTML(
-                value='', 
-                elem_id="download-area"
-            )
-            
-            # ファイルアップロードエリア
-            with gr.Row(elem_classes="file-upload-area"):
-                csv_file = gr.File(
-                    label="CSVファイルをアップロード（オプション）",
-                    file_types=[".csv"],
-                    type="filepath"  # 'file'から'filepath'に変更
+        with gr.Row():
+            # 左側カラム（チャットエリアとファイルアップロード）
+            with gr.Column(scale=2):
+                # チャットエリア
+                chatbot = gr.Chatbot(
+                    [],
+                    elem_id="chatbot",
+                    elem_classes="chat-area",
+                    bubble_full_width=False,
+                    avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
+                    height=350
                 )
-                svg_file = gr.File(
-                    label="SVGファイルをアップロード（オプション）",
-                    file_types=[".svg"],
-                    type="filepath"  # 'file'から'filepath'に変更
-                )
+                
+                # ファイルアップロードエリア
+                with gr.Row(elem_classes="file-upload-area"):
+                    csv_file = gr.File(
+                        label="CSVファイルをアップロード（オプション）",
+                        file_types=[".csv"],
+                        type="filepath"
+                    )
+                    svg_file = gr.File(
+                        label="SVGファイルをアップロード（オプション）",
+                        file_types=[".svg"],
+                        type="filepath"
+                    )
+                
+                # チャット入力エリア
+                with gr.Row(elem_classes="input-area"):
+                    txt = gr.Textbox(
+                        scale=4,
+                        show_label=False,
+                        placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
+                        container=False,
+                    )
+                    submit_btn = gr.Button("送信", scale=1)
+                
+                clear_btn = gr.Button("会話をクリア")
             
-            with gr.Row(elem_classes="input-area"):
-                txt = gr.Textbox(
-                    scale=4,
-                    show_label=False,
-                    placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
-                    container=False,
-                )
-                submit_btn = gr.Button("送信", scale=1)
-        
-            clear_btn = gr.Button("会話をクリア")
+            # 右側カラム（結果表示部分）
+            with gr.Column(scale=2):
+                with gr.Tab("SVG出力"):
+                    # SVG出力エリア
+                    svg_output = gr.HTML(
+                        value='<div class="svg-container">SVG図がここに表示されます</div>', 
+                        elem_id="svg-output"
+                    )
+                    
+                    # ダウンロードボタン/リンク表示エリア
+                    download_area = gr.HTML(
+                        value='', 
+                        elem_id="download-area"
+                    )
+                
+                with gr.Tab("CSVデータ分析"):
+                    # CSVデータ分析結果表示エリア
+                    csv_analysis_output = gr.Markdown(
+                        value="CSVファイルをアップロードすると、ここに分析結果が表示されます。",
+                        elem_classes="csv-analysis-area"
+                    )
         
         # イベントの設定
+        # CSVファイルアップロード時の処理
+        csv_file.change(
+            on_csv_upload, 
+            inputs=[csv_file], 
+            outputs=[csv_file, csv_analysis_output]
+        )
+        
         # メッセージ送信イベント（テキストボックスからのEnter）
-        txt_submit_event = txt.submit(respond, [txt, chatbot, csv_file, svg_file], [chatbot, svg_output, download_area], queue=False)
+        txt_submit_event = txt.submit(respond, [txt, chatbot, csv_file, svg_file], [chatbot, svg_output, download_area, csv_analysis_output], queue=False)
         txt_submit_event.then(lambda: "", None, txt)
         
         # メッセージ送信イベント（ボタンクリック）
-        submit_click_event = submit_btn.click(respond, [txt, chatbot, csv_file, svg_file], [chatbot, svg_output, download_area], queue=False)
+        submit_click_event = submit_btn.click(respond, [txt, chatbot, csv_file, svg_file], [chatbot, svg_output, download_area, csv_analysis_output], queue=False)
         submit_click_event.then(lambda: "", None, txt)
         
         # クリアボタンのイベント
