@@ -3,6 +3,13 @@ import os
 import pandas as pd
 import json
 from utils import logger, log_error
+import chardet
+
+def detect_encoding(file_path):
+    """ファイルのエンコーディングを自動検出する"""
+    with open(file_path, 'rb') as f:
+        result = chardet.detect(f.read())
+    return result['encoding']
 
 def analyze_csv(csv_path):
     """CSVファイルを分析し、基本的な統計情報と洞察を提供する"""
@@ -14,8 +21,32 @@ def analyze_csv(csv_path):
         }
     
     try:
-        # CSVファイルを読み込む
-        df = pd.read_csv(csv_path)
+        # ファイルのエンコーディングを自動検出
+        encoding = detect_encoding(csv_path)
+        logger.info(f"CSVファイルのエンコーディングを検出: {encoding}")
+        
+        # 複数のエンコーディングを試す
+        try:
+            # 検出したエンコーディングで試す
+            df = pd.read_csv(csv_path, encoding=encoding)
+        except UnicodeDecodeError:
+            # 代表的な日本語エンコーディングを順に試す
+            encodings = ['utf-8', 'shift-jis', 'cp932', 'euc-jp', 'iso-2022-jp']
+            success = False
+            
+            for enc in encodings:
+                try:
+                    df = pd.read_csv(csv_path, encoding=enc)
+                    logger.info(f"エンコーディング {enc} で読み込み成功")
+                    success = True
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if not success:
+                # 最後の手段としてエラー無視モードで読み込む
+                df = pd.read_csv(csv_path, encoding='utf-8', errors='ignore')
+                logger.warning("エラーを無視してCSVを読み込みました。一部のデータが欠損している可能性があります。")
         
         # 基本情報
         file_name = os.path.basename(csv_path)
@@ -74,6 +105,7 @@ def analyze_csv(csv_path):
             "file_info": {
                 "file_path": csv_path,
                 "file_name": file_name,
+                "encoding": encoding,
                 "num_rows": num_rows,
                 "num_columns": num_cols,
                 "column_names": column_names
@@ -120,6 +152,7 @@ def generate_display_text(analysis_result):
 
 ### 基本情報
 - **ファイル名**: {file_info["file_name"]}
+- **エンコーディング**: {file_info.get("encoding", "不明")}
 - **行数**: {file_info["num_rows"]}
 - **列数**: {file_info["num_columns"]}
 - **列名**: {', '.join(file_info["column_names"])}
