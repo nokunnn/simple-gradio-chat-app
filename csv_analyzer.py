@@ -4,6 +4,7 @@ import pandas as pd
 import json
 from utils import logger, log_error
 import chardet
+import numpy as np
 
 def detect_encoding(file_path):
     """ファイルのエンコーディングを自動検出する"""
@@ -99,6 +100,62 @@ def analyze_csv(csv_path):
         # サンプルデータ（最初の5行）
         sample_rows = df.head(5).to_dict('records')
         
+        # クロス集計分析
+        cross_tabs = {}
+        cross_tabs_text = ""
+        
+        # 最初の列をインデックス（職種カテゴリなど）として使用
+        if len(column_names) > 1:
+            try:
+                index_col = column_names[0]
+                # 各選択肢に対するクロス集計を実施
+                for col in column_names[1:]:
+                    try:
+                        # クロス集計表を作成
+                        cross_tab = pd.crosstab(df[index_col], df[col], normalize='index') * 100
+                        cross_tab = cross_tab.round(1)  # パーセント表示で小数点1桁に丸める
+                        
+                        # クロス集計結果をdict形式で保持
+                        cross_tabs[col] = cross_tab.to_dict()
+                        
+                        # テキスト形式でもクロス集計結果を保持
+                        cross_tabs_text += f"\n### 「{index_col}」と「{col}」のクロス集計 (%):\n"
+                        cross_tabs_text += cross_tab.to_string() + "\n\n"
+                        
+                        # 特徴的な傾向を分析
+                        # 最大値と最小値を持つセルを特定
+                        max_indices = np.unravel_index(cross_tab.values.argmax(), cross_tab.shape)
+                        min_indices = np.unravel_index(cross_tab.values.argmin(), cross_tab.shape)
+                        
+                        # 最も高い比率と最も低い比率を持つカテゴリを特定
+                        max_row = cross_tab.index[max_indices[0]]
+                        max_col = cross_tab.columns[max_indices[1]]
+                        max_val = cross_tab.iloc[max_indices]
+                        
+                        min_row = cross_tab.index[min_indices[0]]
+                        min_col = cross_tab.columns[min_indices[1]]
+                        min_val = cross_tab.iloc[min_indices]
+                        
+                        cross_tabs_text += f"- 特徴的な傾向: \"{max_row}\" は \"{max_col}\" の選択率が最も高く ({max_val:.1f}%)、\"{min_row}\" は \"{min_col}\" の選択率が最も低い ({min_val:.1f}%)\n"
+                        
+                        # 平均との差が大きいセルを抽出
+                        col_means = cross_tab.mean()
+                        for idx in cross_tab.index:
+                            notable_diffs = []
+                            for col_name in cross_tab.columns:
+                                diff = cross_tab.loc[idx, col_name] - col_means[col_name]
+                                if abs(diff) > 15:  # 平均との差が15%ポイント以上ある場合
+                                    direction = "高い" if diff > 0 else "低い"
+                                    notable_diffs.append(f"\"{col_name}\" が平均より{abs(diff):.1f}%ポイント{direction}")
+                            
+                            if notable_diffs:
+                                cross_tabs_text += f"- \"{idx}\" の特徴: {', '.join(notable_diffs)}\n"
+                    except Exception as e:
+                        logger.warning(f"列 {col} のクロス集計中にエラーが発生しました: {str(e)}")
+            except Exception as e:
+                logger.warning(f"クロス集計中にエラーが発生しました: {str(e)}")
+                cross_tabs_text = f"クロス集計を実行できませんでした。エラー: {str(e)}"
+        
         # 分析結果をまとめる
         analysis_result = {
             "success": True,
@@ -118,6 +175,8 @@ def analyze_csv(csv_path):
                 "numeric": numeric_stats,
                 "categorical": category_stats
             },
+            "cross_tabs": cross_tabs,
+            "cross_tabs_text": cross_tabs_text,
             "sample_data": sample_rows
         }
         
@@ -182,6 +241,11 @@ def generate_display_text(analysis_result):
                     text += f"{val}({val_stats['percentage']}%), "
                 text = text.rstrip(", ") + "\n"
     
+    # クロス集計結果
+    if "cross_tabs_text" in analysis_result and analysis_result["cross_tabs_text"]:
+        text += "\n## クロス集計分析\n"
+        text += analysis_result["cross_tabs_text"]
+    
     # サンプルデータは複雑になりすぎるので省略
     text += "\n### サンプルデータ\n最初の数行のデータは分析に使用されます。\n"
     
@@ -214,6 +278,14 @@ def get_csv_insights_for_lp_planning(csv_analysis):
                     category_text += f"{val}({val_stats['percentage']}%), "
                 category_text = category_text.rstrip(", ") + "\n"
     
+    # クロス集計の洞察テキスト
+    cross_tabs_text = ""
+    if "cross_tabs_text" in csv_analysis["analysis_result"]:
+        cross_tabs_lines = csv_analysis["analysis_result"]["cross_tabs_text"].split("\n")
+        insight_lines = [line for line in cross_tabs_lines if line.startswith("- ")]
+        if insight_lines:
+            cross_tabs_text = "### 職種別の選択傾向の特徴:\n" + "\n".join(insight_lines)
+    
     # サンプルデータをJSON形式でフォーマット
     sample_data_json = json.dumps(csv_analysis["sample_data"][:3], ensure_ascii=False, indent=2)
     
@@ -224,6 +296,7 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         "column_names": file_info["column_names"],
         "numeric_summary": numeric_text,
         "category_summary": category_text,
+        "cross_tabs_insights": cross_tabs_text,
         "sample_data_json": sample_data_json
     }
     
