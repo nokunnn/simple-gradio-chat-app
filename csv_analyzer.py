@@ -257,19 +257,125 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         return None
     
     # LP企画設計で使用するCSVデータの洞察情報をまとめる
-    # 修正: analysis_result キーを通してアクセスするようにします
     analysis_result = csv_analysis["analysis_result"]
     file_info = analysis_result["file_info"]
     stats = analysis_result["statistics"]
     
-    # 数値データの概要テキスト
+    # データの特徴を自然な文章で表現するための変数
+    target_insights = []
+    demographic_insights = []
+    preference_insights = []
+    behavioral_insights = []
+    
+    # 1. ターゲット全体の概要 (行数 = 回答者/顧客数)
+    respondents_count = file_info["num_rows"]
+    target_insights.append(f"アンケートデータには{respondents_count}人の回答が含まれており、十分な母集団サイズでターゲットの傾向を分析できます。")
+    
+    # 2. 主要な属性情報の抽出 (カテゴリ変数から)
+    if stats["categorical"]:
+        # 最初の2つのカテゴリ列は通常、重要な属性情報を含む（職種、年齢層、性別など）
+        primary_categories = list(stats["categorical"].items())[:2]
+        
+        for col_name, col_stats in primary_categories:
+            if "error" not in col_stats:
+                # 上位2つのカテゴリを抽出
+                top_categories = sorted(col_stats.items(), key=lambda x: x[1]['percentage'], reverse=True)[:2]
+                if top_categories:
+                    cat1, stats1 = top_categories[0]
+                    percentage1 = stats1['percentage']
+                    
+                    if len(top_categories) > 1:
+                        cat2, stats2 = top_categories[1]
+                        percentage2 = stats2['percentage']
+                        demographic_insights.append(f"{col_name}は「{cat1}」が{percentage1}%と最も多く、次いで「{cat2}」が{percentage2}%を占めています。")
+                    else:
+                        demographic_insights.append(f"{col_name}は「{cat1}」が{percentage1}%と大半を占めています。")
+    
+    # 3. 数値データからの洞察
+    if stats["numeric"]:
+        for col_name, col_stats in stats["numeric"].items():
+            if "error" not in col_stats:
+                # 平均値と分布の広がりから洞察を生成
+                mean = col_stats["mean"]
+                spread = col_stats["max"] - col_stats["min"]
+                std = col_stats.get("std", 0)
+                
+                if "年齢" in col_name or "age" in col_name.lower():
+                    behavioral_insights.append(f"回答者の平均{col_name}は{mean}で、{col_stats['min']}歳から{col_stats['max']}歳まで分布しています。")
+                elif "収入" in col_name or "所得" in col_name or "income" in col_name.lower():
+                    behavioral_insights.append(f"ターゲットの平均{col_name}は{mean}万円で、最小{col_stats['min']}万円から最大{col_stats['max']}万円まで分布しています。")
+                elif "満足度" in col_name or "評価" in col_name or "score" in col_name.lower() or "rating" in col_name.lower():
+                    if col_stats["max"] <= 5:  # 5点満点の評価と仮定
+                        if mean > 3.5:
+                            preference_insights.append(f"{col_name}の平均は{mean}点と高く、概ね好評価です。")
+                        else:
+                            preference_insights.append(f"{col_name}の平均は{mean}点と中程度で、改善の余地があります。")
+    
+    # 4. クロス集計からの洞察を抽出
+    cross_tabs_insights = []
+    if "cross_tabs_text" in analysis_result:
+        cross_tabs_lines = analysis_result["cross_tabs_text"].split("\n")
+        insight_lines = [line for line in cross_tabs_lines if line.startswith("- ")]
+        
+        # クロス集計の洞察を整理して文章に組み込む
+        first_attribute = file_info["column_names"][0] if file_info["column_names"] else "属性"
+        
+        key_findings = []
+        for line in insight_lines:
+            if "特徴的な傾向" in line:
+                # 文の始まりの "- 特徴的な傾向: " を削除して内容のみを抽出
+                content = line.replace("- 特徴的な傾向: ", "")
+                key_findings.append(content)
+            elif "特徴" in line and "平均" in line:
+                # 文の始まりの "- \"XX\" の特徴: " を削除して内容のみを抽出
+                parts = line.split(":", 1)
+                if len(parts) > 1:
+                    category = parts[0].replace("- ", "").replace("\"", "").replace(" の特徴", "")
+                    content = parts[1].strip()
+                    cross_tabs_insights.append(f"{category}は{content}という特徴があります。")
+        
+        if key_findings:
+            # 最も特徴的な傾向のみを使用
+            preference_insights.append(key_findings[0])
+    
+    # 5. すべての洞察を組み合わせて自然な文章を生成
+    summary_paragraphs = []
+    
+    # ターゲット全体の概要
+    if target_insights:
+        target_summary = " ".join(target_insights)
+        summary_paragraphs.append(target_summary)
+    
+    # 属性の特徴
+    if demographic_insights:
+        demo_summary = "ターゲットの属性としては、" + " ".join(demographic_insights)
+        summary_paragraphs.append(demo_summary)
+    
+    # 行動や嗜好の特徴
+    combined_insights = preference_insights + behavioral_insights
+    if combined_insights:
+        behavior_summary = "ターゲットの特徴的な傾向として、" + " ".join(combined_insights)
+        summary_paragraphs.append(behavior_summary)
+    
+    # クロス集計からの深い洞察
+    if cross_tabs_insights:
+        cross_tabs_summary = "さらに詳細な分析からは、" + " ".join(cross_tabs_insights)
+        summary_paragraphs.append(cross_tabs_summary)
+    
+    # LP企画への示唆
+    implications = "これらの特徴を踏まえると、ターゲットが抱える課題や関心事に焦点を当て、それらを解決する具体的な価値提案をLPで訴求することが効果的です。"
+    summary_paragraphs.append(implications)
+    
+    # 最終的な自然文テキスト
+    target_analysis_text = "\n\n".join(summary_paragraphs)
+    
+    # 元の統計情報も保持（必要に応じて参照できるように）
     numeric_text = ""
     if stats["numeric"]:
         for col, col_stats in stats["numeric"].items():
             if "error" not in col_stats:
                 numeric_text += f"- {col}の範囲: {col_stats['min']}～{col_stats['max']} (平均: {col_stats['mean']})\n"
     
-    # カテゴリデータの概要テキスト
     category_text = ""
     if stats["categorical"]:
         for col, col_stats in stats["categorical"].items():
@@ -286,10 +392,9 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         cross_tabs_lines = analysis_result["cross_tabs_text"].split("\n")
         insight_lines = [line for line in cross_tabs_lines if line.startswith("- ")]
         if insight_lines:
-            cross_tabs_text = "### 職種別の選択傾向の特徴:\n" + "\n".join(insight_lines)
+            cross_tabs_text = "### 属性別の選択傾向の特徴:\n" + "\n".join(insight_lines)
     
     # サンプルデータをJSON形式でフォーマット
-    # 修正: sample_data も analysis_result キーの中から取得
     sample_data = analysis_result.get("sample_data", [])
     sample_data_json = json.dumps(sample_data[:3] if sample_data else [], ensure_ascii=False, indent=2)
     
@@ -298,6 +403,7 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         "num_rows": file_info["num_rows"],
         "num_columns": file_info["num_columns"],
         "column_names": file_info["column_names"],
+        "target_analysis": target_analysis_text,  # 新たに追加した自然文の分析テキスト
         "numeric_summary": numeric_text,
         "category_summary": category_text,
         "cross_tabs_insights": cross_tabs_text,
