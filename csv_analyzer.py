@@ -257,8 +257,10 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         return None
     
     # LP企画設計で使用するCSVデータの洞察情報をまとめる
-    file_info = csv_analysis["file_info"]
-    stats = csv_analysis["statistics"]
+    # 修正: analysis_result キーを通してアクセスするようにします
+    analysis_result = csv_analysis["analysis_result"]
+    file_info = analysis_result["file_info"]
+    stats = analysis_result["statistics"]
     
     # 数値データの概要テキスト
     numeric_text = ""
@@ -280,14 +282,16 @@ def get_csv_insights_for_lp_planning(csv_analysis):
     
     # クロス集計の洞察テキスト
     cross_tabs_text = ""
-    if "cross_tabs_text" in csv_analysis["analysis_result"]:
-        cross_tabs_lines = csv_analysis["analysis_result"]["cross_tabs_text"].split("\n")
+    if "cross_tabs_text" in analysis_result:
+        cross_tabs_lines = analysis_result["cross_tabs_text"].split("\n")
         insight_lines = [line for line in cross_tabs_lines if line.startswith("- ")]
         if insight_lines:
             cross_tabs_text = "### 職種別の選択傾向の特徴:\n" + "\n".join(insight_lines)
     
     # サンプルデータをJSON形式でフォーマット
-    sample_data_json = json.dumps(csv_analysis["sample_data"][:3], ensure_ascii=False, indent=2)
+    # 修正: sample_data も analysis_result キーの中から取得
+    sample_data = analysis_result.get("sample_data", [])
+    sample_data_json = json.dumps(sample_data[:3] if sample_data else [], ensure_ascii=False, indent=2)
     
     insights_data = {
         "file_name": file_info["file_name"],
