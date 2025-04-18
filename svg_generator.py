@@ -1,13 +1,13 @@
 """Gemini 1.5 Proを使用したSVG生成機能"""
 import re
 import google.generativeai as genai
-from utils import GOOGLE_API_KEY, log_error, logger
+from utils import GOOGLE_API_KEY, log_error, logger, read_svg_content
 
 # Gemini APIの設定
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
 
-def generate_svg_with_gemini(product_theme, analysis_text):
+def generate_svg_with_gemini(product_theme, analysis_text, svg_path=None):
     """Gemini 1.5 ProにGeminiの分析結果を渡してSVGを生成する関数"""
     if not GOOGLE_API_KEY:
         return None, "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。"
@@ -15,6 +15,12 @@ def generate_svg_with_gemini(product_theme, analysis_text):
     try:
         # Gemini 1.5 Pro モデルの初期化
         model = genai.GenerativeModel('gemini-1.5-pro')
+        
+        # 参考SVGが提供されている場合、そのコンテンツを読み込む
+        reference_svg = None
+        if svg_path:
+            reference_svg = read_svg_content(svg_path)
+            logger.info(f"参考SVGファイルを読み込みました: {svg_path}")
         
         # Gemini 1.5 Proへのプロンプト
         prompt = f"""
@@ -60,6 +66,19 @@ def generate_svg_with_gemini(product_theme, analysis_text):
          - SVGのコードだけを出力してください。必ず<svg>タグで始まり</svg>タグで終わる完全な形式で記述してください。
          - コードの前後に説明文やマークダウンなどは不要です。SVGコード以外は一切出力しないでください。
         """
+        
+        # 参考SVGがある場合、プロンプトに追加
+        if reference_svg:
+            prompt += f"""
+            
+            #参考SVGの活用:
+            以下に参考としてSVGファイルが提供されています。このSVGのレイアウト、デザイン、構成要素の配置方法などを参考にして、新しいSVGを作成してください。参考SVGの良い部分（構成、配色、レイアウト、視覚的なバランスなど）を取り入れつつ、上記の分析結果に適合するようにコンテンツを調整してください。
+            
+            参考SVGコード:
+            {reference_svg}
+            
+            ただし、参考SVGのデザインをそのまま模倣するのではなく、参考SVGのレイアウトやデザインの良い点を取り入れながら、上記のテーマと分析結果に合わせて新しいSVGを作成してください。
+            """
         
         # Gemini 1.5 Proからの応答を取得
         response = model.generate_content(
