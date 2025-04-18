@@ -21,9 +21,24 @@ def generate_lp_planning(product_theme, csv_path=None, svg_path=None):
         
         # CSVデータを読み込み
         csv_analysis = None
+        csv_summary = ""
         if csv_path:
             csv_analysis = read_csv_data(csv_path)
             logger.info(f"CSVファイルを読み込みました: {csv_path}")
+            
+            # CSV分析のサマリーを作成
+            if csv_analysis:
+                csv_summary = f"""
+                ## CSVデータ分析
+                
+                **アップロードされたCSVデータの概要:**
+                - ファイル: {os.path.basename(csv_path)}
+                - 行数: {csv_analysis['num_rows']}
+                - 列数: {csv_analysis['num_columns']}
+                - 列情報: {', '.join([f"{col}" for col in csv_analysis['columns'].keys()])}
+                
+                このCSVデータに基づいてターゲット分析を行います。
+                """
         
         # プロンプトテンプレート
         prompt = f"""
@@ -57,6 +72,8 @@ def generate_lp_planning(product_theme, csv_path=None, svg_path=None):
             {json.dumps(csv_analysis['sample_data'], ensure_ascii=False, indent=2)}
             
             このデータから読み取れる傾向や特徴を分析に組み込んでください。特に、ターゲット企業の特性や課題、ニーズに関する洞察を深めることに重点を置いてください。
+            
+            分析レポートの冒頭で「CSVデータ分析に基づく洞察」というセクションを追加して、CSVデータから得られた主要な洞察を簡潔にまとめてください。
             """
         
         # Geminiからの応答を取得
@@ -64,6 +81,10 @@ def generate_lp_planning(product_theme, csv_path=None, svg_path=None):
         
         # 応答から分析部分を取得
         analysis_text = response.text
+        
+        # CSVデータ分析のサマリーがある場合は、それを分析テキストの前に追加
+        if csv_summary:
+            analysis_text = csv_summary + "\n\n" + analysis_text
         
         # Gemini 2.5 Proを使ってSVGを生成（Geminiの分析結果を渡す）
         svg_code, svg_error = generate_svg_with_gemini(product_theme, analysis_text, svg_path)
