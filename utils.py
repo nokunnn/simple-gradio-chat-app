@@ -49,19 +49,22 @@ def log_error(error_message, error=None):
         logger.error(error_message)
         return error_message
 
-def save_uploaded_file(original_path, file_type):
+def save_uploaded_file(filepath, file_type):
     """アップロードされたファイルを一時ディレクトリに保存する"""
     global uploaded_csv_path, uploaded_svg_path
     
+    if not filepath:
+        return None
+    
     # ファイルのコピー先パスを生成
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    base_name = os.path.basename(original_path)
+    base_name = os.path.basename(filepath)
     _, ext = os.path.splitext(base_name)
     new_filename = f"{file_type}_{timestamp}{ext}"
     new_path = os.path.join(TEMP_DIR, new_filename)
     
     # ファイルをコピー
-    shutil.copy2(original_path, new_path)
+    shutil.copy2(filepath, new_path)
     
     # グローバル変数を更新
     if file_type == "csv":
