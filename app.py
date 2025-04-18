@@ -30,11 +30,11 @@ def respond(message, history, csv_file=None, svg_file=None):
     csv_path = None
     svg_path = None
     if csv_file is not None:
-        csv_path = save_uploaded_file(csv_file.name, "csv")
+        csv_path = save_uploaded_file(csv_file, "csv")
         logger.info(f"CSVファイルが保存されました: {csv_path}")
     
     if svg_file is not None:
-        svg_path = save_uploaded_file(svg_file.name, "svg")
+        svg_path = save_uploaded_file(svg_file, "svg")
         logger.info(f"SVGファイルが保存されました: {svg_path}")
     
     # LP企画設計モード
@@ -205,12 +205,12 @@ def create_app():
                 csv_file = gr.File(
                     label="CSVファイルをアップロード（オプション）",
                     file_types=[".csv"],
-                    type="file"
+                    type="filepath"  # 'file'から'filepath'に変更
                 )
                 svg_file = gr.File(
                     label="SVGファイルをアップロード（オプション）",
                     file_types=[".svg"],
-                    type="file"
+                    type="filepath"  # 'file'から'filepath'に変更
                 )
             
             with gr.Row(elem_classes="input-area"):
