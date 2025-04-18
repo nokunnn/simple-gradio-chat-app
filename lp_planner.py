@@ -1,4 +1,5 @@
 """Gemini APIを使用したLP企画設計の分析機能"""
+import os
 import google.generativeai as genai
 from utils import GOOGLE_API_KEY, log_error, logger, read_csv_data, read_svg_content
 from svg_generator import generate_svg_with_gemini, get_backup_svg
