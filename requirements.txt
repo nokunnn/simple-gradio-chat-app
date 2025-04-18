@@ -5,3 +5,4 @@ python-pptx>=0.6.21
 svglib>=1.5.1
 reportlab>=3.6.12
 cairosvg>=2.7.0
+pandas>=2.0.0
