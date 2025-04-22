@@ -3,7 +3,15 @@ import os
 import pandas as pd
 import json
 import numpy as np
+import chardet
 from utils import logger, log_error
+
+def detect_encoding(file_path):
+    """ファイルのエンコーディングを検出する関数"""
+    with open(file_path, 'rb') as f:
+        raw_data = f.read()
+        result = chardet.detect(raw_data)
+        return result['encoding']
 
 def analyze_csv(csv_path):
     """CSVファイルを分析し、構造と統計情報を抽出する関数"""
@@ -11,18 +19,29 @@ def analyze_csv(csv_path):
         return {"success": False, "error": "CSVファイルが見つかりません"}
     
     try:
-        # CSVファイルを読み込む
-        df = pd.read_csv(csv_path, encoding='utf-8')
+        # ファイルのエンコーディングを自動検出
+        detected_encoding = detect_encoding(csv_path)
+        logger.info(f"検出されたエンコーディング: {detected_encoding}")
         
-        # もし読み込みに失敗したら他のエンコーディングも試す
-        if df.empty:
-            for encoding in ['shift-jis', 'cp932', 'iso-2022-jp']:
+        # 検出されたエンコーディングでCSVファイルを読み込む
+        try:
+            df = pd.read_csv(csv_path, encoding=detected_encoding)
+        except Exception as e:
+            logger.warning(f"検出されたエンコーディング {detected_encoding} での読み込みに失敗: {str(e)}")
+            # 一般的な日本語エンコーディングを試す
+            encodings_to_try = ['utf-8', 'shift-jis', 'cp932', 'euc-jp', 'iso-2022-jp']
+            for encoding in encodings_to_try:
                 try:
+                    logger.info(f"エンコーディング {encoding} で試行中...")
                     df = pd.read_csv(csv_path, encoding=encoding)
-                    if not df.empty:
-                        break
-                except:
+                    logger.info(f"エンコーディング {encoding} で成功")
+                    break
+                except Exception as e:
+                    logger.warning(f"エンコーディング {encoding} での読み込みに失敗: {str(e)}")
                     continue
+            else:
+                # すべてのエンコーディングで失敗した場合
+                return {"success": False, "error": "CSVファイルのエンコーディングを特定できませんでした"}
         
         # 基本情報
         file_info = {
@@ -31,6 +50,11 @@ def analyze_csv(csv_path):
             "num_columns": len(df.columns),
             "column_names": df.columns.tolist()
         }
+        
+        # データフレームのデバッグ出力
+        logger.info(f"CSVデータ読み込み成功: {file_info['num_rows']}行 × {file_info['num_columns']}列")
+        logger.info(f"列名: {file_info['column_names']}")
+        logger.info(f"最初の5行のサンプル:\n{df.head().to_string()}")
         
         # 最初の10行をサンプルとして取得
         sample_data = []
@@ -58,6 +82,7 @@ def analyze_csv(csv_path):
                     statistics["numeric"][col] = col_stats
                 except Exception as e:
                     statistics["numeric"][col] = {"error": str(e)}
+                    logger.error(f"列 {col} の数値統計計算中にエラー: {str(e)}")
             else:
                 try:
                     # カテゴリ型の列の統計
@@ -77,6 +102,7 @@ def analyze_csv(csv_path):
                     statistics["categorical"][col] = col_stats
                 except Exception as e:
                     statistics["categorical"][col] = {"error": str(e)}
+                    logger.error(f"列 {col} のカテゴリ統計計算中にエラー: {str(e)}")
         
         # 職種別の選択傾向を分析
         job_type_analysis = analyze_job_type_trends(df)
@@ -107,7 +133,11 @@ def analyze_job_type_trends(df):
     try:
         # CSVの形式が想定通りかチェック
         if len(df.columns) < 3:
+            logger.warning("CSVのフォーマットが期待と異なります。少なくとも3列以上が必要です。")
             return {"error": "CSVのフォーマットが期待と異なります。少なくとも3列以上が必要です。"}
+        
+        # デバッグ用に最初の数行を出力
+        logger.info(f"職種別分析の入力データ（最初の3行）:\n{df.iloc[:3, :].to_string()}")
         
         # 職種が1列目、回答者数が2列目、選択肢が3列目以降と想定
         job_types = df.iloc[:, 0]
@@ -123,24 +153,36 @@ def analyze_job_type_trends(df):
                 continue
                 
             # この職種の回答者数
-            response_count = total_responses.iloc[i]
-            if pd.isna(response_count) or response_count <= 0:
+            try:
+                response_count = float(total_responses.iloc[i])
+                if pd.isna(response_count) or response_count <= 0:
+                    logger.warning(f"職種 {job_type} の回答者数が無効です: {total_responses.iloc[i]}")
+                    continue
+            except Exception as e:
+                logger.warning(f"職種 {job_type} の回答者数の変換中にエラー: {str(e)}")
                 continue
                 
             # 各選択肢の割合を計算
             choice_percentages = {}
             for j, choice_col in enumerate(choices.columns):
-                choice_count = choices.iloc[i, j]
-                if pd.isna(choice_count):
+                try:
+                    choice_count = float(choices.iloc[i, j])
+                    if pd.isna(choice_count):
+                        continue
+                        
+                    percentage = (choice_count / response_count) * 100
+                    choice_percentages[choice_col] = {
+                        "count": choice_count,
+                        "percentage": round(percentage, 1)
+                    }
+                except Exception as e:
+                    logger.warning(f"職種 {job_type} の選択肢 {choice_col} の計算中にエラー: {str(e)}")
                     continue
-                    
-                percentage = (choice_count / response_count) * 100
-                choice_percentages[choice_col] = {
-                    "count": choice_count,
-                    "percentage": round(percentage, 1)
-                }
             
             # 上位選択肢と下位選択肢を特定
+            if not choice_percentages:
+                continue
+                
             sorted_choices = sorted(choice_percentages.items(), key=lambda x: x[1]["percentage"], reverse=True)
             top_choices = sorted_choices[:2]  # 上位2つの選択肢
             bottom_choices = sorted_choices[-2:] if len(sorted_choices) > 2 else []  # 下位2つの選択肢
@@ -151,6 +193,7 @@ def analyze_job_type_trends(df):
             # 結果を辞書に追加
             job_type_trends[str(job_type)] = trend_text
         
+        logger.info(f"職種別分析の結果: {len(job_type_trends)}件の職種を分析しました")
         return job_type_trends
         
     except Exception as e:
@@ -377,7 +420,11 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         summary_paragraphs.append(behavior_summary)
     
     # LP企画への示唆
-    implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
+    if highlighted_job_types and len(highlighted_job_types) >= 2:
+        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
+    else:
+        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。"
+    
     summary_paragraphs.append(implications)
     
     # 最終的な自然文テキスト
