@@ -156,27 +156,26 @@ CSS = """
     .responsive-layout {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 15px;
     }
     .chat-area {
         min-height: 600px !important;
-        max-height: none !important;
-        overflow-y: auto;
+        max-height: 800px !important;
     }
     .title-area {
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     }
     .input-area {
-        margin-top: 15px;
+        margin-top: 10px;
     }
     .button-row {
         display: flex;
-        gap: 15px;
-        margin-top: 15px;
+        gap: 10px;
+        margin-top: 10px;
     }
     .file-upload-area {
-        margin-top: 15px;
-        padding: 15px;
+        margin-top: 10px;
+        padding: 10px;
         border: 1px solid #eee;
         border-radius: 5px;
         background-color: #f9f9f9;
@@ -190,8 +189,8 @@ CSS = """
         border-radius: 5px;
         font-weight: bold;
         transition: background-color 0.2s;
-        margin-top: 15px;
-        margin-bottom: 15px;
+        margin-top: 10px;
+        margin-bottom: 10px;
     }
     .download-link:hover {
         background-color: #218838;
@@ -201,51 +200,81 @@ CSS = """
         background-color: #1e7e34;
     }
     .csv-analysis-area {
-        margin-top: 20px;
-        padding: 20px;
+        margin-top: 15px;
+        padding: 15px;
         border: 1px solid #d0e3ff;
         border-radius: 5px;
         background-color: #f0f7ff;
         overflow-y: auto;
-        height: 400px;  /* 高さを固定 */
+        max-height: 600px;
     }
     .csv-analysis-area h2 {
         color: #0056b3;
-        font-size: 1.3rem;
+        font-size: 1.2rem;
         margin-top: 0;
-        margin-bottom: 15px;
     }
     .csv-analysis-area h3 {
         color: #0069d9;
         font-size: 1.1rem;
-        margin-top: 15px;
-    }
-    .csv-analysis-area ul {
         margin-top: 10px;
     }
-    .output-tabs {
-        margin-top: 20px;
+    .csv-analysis-area ul {
+        margin-top: 5px;
     }
-    .main-container {
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        max-width: 1200px;
-        margin: 0 auto;
+    /* チャット吹き出しのスタイル改善 */
+    .chatbot-container .user-message, .chatbot-container .bot-message {
+        max-width: 90% !important;
+        padding: 12px 16px !important;
     }
-    .chat-container {
-        width: 100%;
+    .chatbot-container .bot-message {
+        background-color: #f0f7ff !important;
     }
-    .results-container {
-        width: 100%;
-        margin-top: 20px;
+    /* スクロールバーのスタイル */
+    .chat-area::-webkit-scrollbar {
+        width: 8px;
     }
-    .message-bubble {
-        max-width: 100%;
-        word-wrap: break-word;
+    .chat-area::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
     }
-    .chatbot-container .message:last-child .message-bubble {
-        white-space: pre-wrap !important;
+    .chat-area::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+    }
+    .chat-area::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    /* Markdownの表示を改善 */
+    .bot-message h2 {
+        font-size: 1.35rem !important;
+        margin-top: 1.5rem !important;
+        margin-bottom: 0.8rem !important;
+        color: #0056b3 !important;
+        border-bottom: 1px solid #dee2e6 !important;
+        padding-bottom: 0.3rem !important;
+    }
+    .bot-message h3 {
+        font-size: 1.2rem !important;
+        margin-top: 1.2rem !important;
+        margin-bottom: 0.7rem !important;
+        color: #0069d9 !important;
+    }
+    .bot-message p {
+        margin-bottom: 0.7rem !important;
+        line-height: 1.5 !important;
+    }
+    .bot-message ul, .bot-message ol {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.7rem !important;
+        padding-left: 1.5rem !important;
+    }
+    .bot-message li {
+        margin-bottom: 0.3rem !important;
+    }
+    .bot-message hr {
+        margin: 1.5rem 0 !important;
+        border: 0 !important;
+        border-top: 1px solid #dee2e6 !important;
     }
 """
 
@@ -253,24 +282,34 @@ CSS = """
 def create_app():
     """Gradioアプリケーションを作成する"""
     with gr.Blocks(css=CSS) as demo:
-        with gr.Column(elem_classes="main-container"):
-            with gr.Column(elem_classes="title-area"):
-                gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
-                gr.Markdown("""
-                このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
-                
-                **使い方**: 
-                - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
-                - CSVファイル（ターゲット分析データ）とSVGファイル（レイアウト参考）をアップロードすることができます
-                - LP分析にはGemini Flash、SVG図にはGemini 1.5 Proを使用します
-                - 生成したSVG図はPowerPointファイルとしてダウンロードできます
-                - 通常のチャットには、普通にメッセージを入力してください
-                
-                **例**: 「LP企画: クラウドセキュリティサービス」
-                """)
+        with gr.Column(elem_classes="title-area"):
+            gr.Markdown("# 💬 法人向けLP企画設計チャットアプリ")
+            gr.Markdown("""
+            このアプリは、商品やサービスのテーマに基づいて法人向けLPの企画設計をサポートします。
             
-            # チャット部分（縦に広く）
-            with gr.Column(elem_classes="chat-container"):
+            **使い方**: 
+            - 「LP企画: 商品名やテーマ」と入力すると、LP企画設計の分析とSVG図を生成します
+            - CSVファイル（ターゲット分析データ）とSVGファイル（レイアウト参考）をアップロードすることができます
+            - LP分析にはGemini Flash、SVG図にはGemini 1.5 Proを使用します
+            - 生成したSVG図はPowerPointファイルとしてダウンロードできます
+            - 通常のチャットには、普通にメッセージを入力してください
+            
+            **例**: 「LP企画: クラウドセキュリティサービス」
+            """)
+        
+        with gr.Row():
+            # 左側カラム（チャットエリアとファイルアップロード）
+            with gr.Column(scale=3):  # 幅を拡大
+                # チャットエリア
+                chatbot = gr.Chatbot(
+                    [],
+                    elem_id="chatbot",
+                    elem_classes="chat-area chatbot-container",
+                    bubble_full_width=False,
+                    avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
+                    height=700  # 高さを増加
+                )
+                
                 # ファイルアップロードエリア
                 with gr.Row(elem_classes="file-upload-area"):
                     csv_file = gr.File(
@@ -284,17 +323,6 @@ def create_app():
                         type="filepath"
                     )
                 
-                # チャットエリア（高さを増加）
-                chatbot = gr.Chatbot(
-                    [],
-                    elem_id="chatbot",
-                    elem_classes="chat-area",
-                    bubble_full_width=False,
-                    avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-                    height=600,  # 高さを増加
-                    container=True
-                )
-                
                 # チャット入力エリア
                 with gr.Row(elem_classes="input-area"):
                     txt = gr.Textbox(
@@ -302,33 +330,33 @@ def create_app():
                         show_label=False,
                         placeholder="メッセージを入力するか、「LP企画: テーマ」と入力してください...",
                         container=False,
+                        lines=2  # 入力エリアを2行に
                     )
                     submit_btn = gr.Button("送信", scale=1)
                 
                 clear_btn = gr.Button("会話をクリア")
             
-            # 結果表示部分（チャットの下に移動）
-            with gr.Column(elem_classes="results-container"):
-                with gr.Tabs(elem_classes="output-tabs") as tabs:
-                    with gr.TabItem("SVG出力"):
-                        # SVG出力エリア
-                        svg_output = gr.HTML(
-                            value='<div class="svg-container">SVG図がここに表示されます</div>', 
-                            elem_id="svg-output"
-                        )
-                        
-                        # ダウンロードボタン/リンク表示エリア
-                        download_area = gr.HTML(
-                            value='', 
-                            elem_id="download-area"
-                        )
+            # 右側カラム（結果表示部分）
+            with gr.Column(scale=2):
+                with gr.Tab("SVG出力"):
+                    # SVG出力エリア
+                    svg_output = gr.HTML(
+                        value='<div class="svg-container">SVG図がここに表示されます</div>', 
+                        elem_id="svg-output"
+                    )
                     
-                    with gr.TabItem("CSVデータ分析"):
-                        # CSVデータ分析結果表示エリア
-                        csv_analysis_output = gr.Markdown(
-                            value="CSVファイルをアップロードすると、ここに分析結果が表示されます。",
-                            elem_classes="csv-analysis-area"
-                        )
+                    # ダウンロードボタン/リンク表示エリア
+                    download_area = gr.HTML(
+                        value='', 
+                        elem_id="download-area"
+                    )
+                
+                with gr.Tab("CSVデータ分析"):
+                    # CSVデータ分析結果表示エリア
+                    csv_analysis_output = gr.Markdown(
+                        value="CSVファイルをアップロードすると、ここに分析結果が表示されます。",
+                        elem_classes="csv-analysis-area"
+                    )
         
         # イベントの設定
         # CSVファイルアップロード時の処理
