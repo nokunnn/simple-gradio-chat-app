@@ -26,6 +26,29 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
         return "エラー: Google API Keyが設定されていません。環境変数GOOGLE_API_KEYを設定してください。", None, None
     
     try:
+        # アンケート分析結果部分（UIの出力冒頭に表示させる）
+        csv_analysis_prefix = ""
+        if csv_insights:
+            target_analysis = csv_insights.get('target_analysis', '')
+            job_type_analysis = csv_insights.get('job_type_analysis', '')
+            choice_pattern_insights = csv_insights.get('choice_pattern_insights', '')
+            
+            if target_analysis or job_type_analysis or choice_pattern_insights:
+                csv_analysis_prefix = "## アンケートの分析結果\n\n"
+                
+                if target_analysis:
+                    csv_analysis_prefix += f"{target_analysis}\n\n"
+                
+                if job_type_analysis:
+                    csv_analysis_prefix += "### 職種別選択傾向の詳細\n"
+                    csv_analysis_prefix += f"{job_type_analysis}\n\n"
+                    
+                if choice_pattern_insights:
+                    csv_analysis_prefix += "### 選択肢の関連パターン\n"
+                    csv_analysis_prefix += f"{choice_pattern_insights}\n\n"
+                
+                csv_analysis_prefix += "---\n\n"  # 区切り線
+        
         # Geminiモデルの生成
         model = genai.GenerativeModel('gemini-2.0-flash')
         
@@ -66,6 +89,9 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
             # 職種別選択傾向の分析結果を取得
             job_type_analysis = csv_insights.get('job_type_analysis', '')
             
+            # 選択肢パターンの洞察を取得
+            choice_pattern_insights = csv_insights.get('choice_pattern_insights', '')
+            
             prompt = f"""
             あなたは法人向けのランディングページ(LP)の企画設計のエキスパートです。
             以下の商品/サービステーマに対して、法人向けLPの企画設計を行ってください。
@@ -84,6 +110,12 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
             <<< 職種別選択傾向分析 >>>
             {job_type_analysis}
             <<< 職種別選択傾向分析おわり >>>
+            
+            以下の選択肢パターンの分析も参考にしてください：
+            
+            <<< 選択肢パターン分析 >>>
+            {choice_pattern_insights}
+            <<< 選択肢パターン分析おわり >>>
 
             以下の3つの観点から分析を行ってください:
 
@@ -91,15 +123,18 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
                - 上記のターゲット分析と職種別選択傾向分析を踏まえて、このサービス/商品の理想的な法人顧客はどのような企業か、どのような課題を持っているのかを詳細に分析してください。
                - 特に、職種ごとの選択傾向から見える特徴（効率性重視、コスト意識、品質重視など）を考慮し、各職種が抱える課題や関心事を具体的に分析してください。
                - ターゲット企業内の主要な意思決定者の職種や、彼らが何を重視するかに着目してください。
+               - 選択肢パターンの分析結果から、関連する選好傾向を考慮してください。
                
             2. 訴求軸の検討: 
                - 上記のターゲット分析と職種別選択傾向分析を踏まえて、商品/サービスの最も魅力的な特徴と、それによって解決される顧客の課題を検討してください。
                - 各職種の特性に合わせた訴求ポイントを具体的に提案してください。例えば、コスト意識が高い職種には投資対効果や費用削減効果を、品質重視の職種には精度や信頼性を強調するなど。
+               - 選択肢の相関関係を考慮し、ポジティブな相関のある選択肢は同じセグメントに、ネガティブな相関のある選択肢は異なるセグメントに対して訴求するような構成を検討してください。
                
             3. 訴求シナリオの検討: 
                - 職種ごとの選択傾向を踏まえて、LPで情報を伝達する最適な順序、各セクションで伝えるべき内容を具体的に検討してください。
                - 主要な意思決定者の職種（経営層、管理職、専門職など）に向けたメッセージの配置順序や強調方法を提案してください。
                - 各職種が重視する要素（効率性、コスト、品質、革新性など）をLPのどのセクションで、どのように訴求すべきかを具体的に提案してください。
+               - 選択肢の相関パターンに基づいて、ページ内のコンテンツの配置や流れを最適化する提案を行ってください。
 
             分析内容は必ず以下の形式で出力してください:
             ```
@@ -123,6 +158,9 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
         # 応答から分析部分を取得
         analysis_text = response.text
         
+        # CSVの分析内容を先頭に追加
+        final_analysis_text = csv_analysis_prefix + analysis_text
+        
         # Gemini 1.5 Proを使ってSVGを生成（Geminiの分析結果を渡す）
         svg_code, svg_error = generate_svg_with_gemini(product_theme, analysis_text, svg_path)
         
@@ -130,20 +168,20 @@ def generate_lp_planning(product_theme, csv_insights=None, svg_path=None):
         if not svg_code:
             svg_code = get_backup_svg()
             if svg_error:
-                analysis_text += f"\n\n{svg_error}"
+                final_analysis_text += f"\n\n{svg_error}"
         
         # グローバル変数に保存
         utils.current_svg_code = svg_code
-        utils.current_analysis = analysis_text
+        utils.current_analysis = final_analysis_text
         utils.current_theme = product_theme
         
         # PowerPointファイルを生成
-        pptx_data, filename = svg_to_pptx(svg_code, analysis_text, product_theme)
+        pptx_data, filename = svg_to_pptx(svg_code, final_analysis_text, product_theme)
         
         # ダウンロードリンクの作成
         download_link = create_download_link(pptx_data, filename)
         
-        return analysis_text, svg_code, download_link
+        return final_analysis_text, svg_code, download_link
         
     except Exception as e:
         return log_error("LP企画設計中にエラーが発生しました", e), None, None
