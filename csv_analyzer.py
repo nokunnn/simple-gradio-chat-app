@@ -5,6 +5,12 @@ import json
 import numpy as np
 import chardet
 from utils import logger, log_error
+from job_type_analyzer import (
+    analyze_job_type_preferences,
+    generate_job_type_insights,
+    analyze_choice_patterns,
+    interpret_choice_patterns
+)
 
 def detect_encoding(file_path):
     """ファイルのエンコーディングを検出する関数"""
@@ -104,15 +110,23 @@ def analyze_csv(csv_path):
                     statistics["categorical"][col] = {"error": str(e)}
                     logger.error(f"列 {col} のカテゴリ統計計算中にエラー: {str(e)}")
         
-        # 職種別の選択傾向を分析
-        job_type_analysis = analyze_job_type_trends(df)
+        # 職種別の選択傾向を詳細に分析
+        job_type_preferences = analyze_job_type_preferences(df)
+        job_type_insights = generate_job_type_insights(job_type_preferences)
+        
+        # 選択肢パターンの分析
+        choice_patterns = analyze_choice_patterns(df)
+        choice_pattern_insights = interpret_choice_patterns(choice_patterns)
         
         # 分析結果をまとめる
         analysis_result = {
             "file_info": file_info,
             "statistics": statistics,
             "sample_data": sample_data,
-            "job_type_analysis": job_type_analysis
+            "job_type_analysis": job_type_insights,
+            "job_type_preferences": job_type_preferences,
+            "choice_patterns": choice_patterns,
+            "choice_pattern_insights": choice_pattern_insights
         }
         
         # 表示用のテキストを生成
@@ -128,153 +142,12 @@ def analyze_csv(csv_path):
         error_msg = log_error("CSVファイルの分析中にエラーが発生しました", e)
         return {"success": False, "error": error_msg}
 
-def analyze_job_type_trends(df):
-    """職種別の選択傾向を分析し、各職種の特徴を抽出する関数"""
-    try:
-        # CSVの形式が想定通りかチェック
-        if len(df.columns) < 3:
-            logger.warning("CSVのフォーマットが期待と異なります。少なくとも3列以上が必要です。")
-            return {"error": "CSVのフォーマットが期待と異なります。少なくとも3列以上が必要です。"}
-        
-        # デバッグ用に最初の数行を出力
-        logger.info(f"職種別分析の入力データ（最初の3行）:\n{df.iloc[:3, :].to_string()}")
-        
-        # 職種が1列目、回答者数が2列目、選択肢が3列目以降と想定
-        job_types = df.iloc[:, 0]
-        total_responses = df.iloc[:, 1]
-        choices = df.iloc[:, 2:]
-        
-        # 結果を格納する辞書
-        job_type_trends = {}
-        
-        # 各職種について分析
-        for i, job_type in enumerate(job_types):
-            if pd.isna(job_type) or str(job_type).strip() == "":
-                continue
-                
-            # この職種の回答者数
-            try:
-                response_count = float(total_responses.iloc[i])
-                if pd.isna(response_count) or response_count <= 0:
-                    logger.warning(f"職種 {job_type} の回答者数が無効です: {total_responses.iloc[i]}")
-                    continue
-            except Exception as e:
-                logger.warning(f"職種 {job_type} の回答者数の変換中にエラー: {str(e)}")
-                continue
-                
-            # 各選択肢の割合を計算
-            choice_percentages = {}
-            for j, choice_col in enumerate(choices.columns):
-                try:
-                    choice_count = float(choices.iloc[i, j])
-                    if pd.isna(choice_count):
-                        continue
-                        
-                    percentage = (choice_count / response_count) * 100
-                    choice_percentages[choice_col] = {
-                        "count": choice_count,
-                        "percentage": round(percentage, 1)
-                    }
-                except Exception as e:
-                    logger.warning(f"職種 {job_type} の選択肢 {choice_col} の計算中にエラー: {str(e)}")
-                    continue
-            
-            # 上位選択肢と下位選択肢を特定
-            if not choice_percentages:
-                continue
-                
-            sorted_choices = sorted(choice_percentages.items(), key=lambda x: x[1]["percentage"], reverse=True)
-            top_choices = sorted_choices[:2]  # 上位2つの選択肢
-            bottom_choices = sorted_choices[-2:] if len(sorted_choices) > 2 else []  # 下位2つの選択肢
-            
-            # この職種の傾向を文章で表現
-            trend_text = generate_job_type_trend_text(job_type, top_choices, bottom_choices, choice_percentages)
-            
-            # 結果を辞書に追加
-            job_type_trends[str(job_type)] = trend_text
-        
-        logger.info(f"職種別分析の結果: {len(job_type_trends)}件の職種を分析しました")
-        return job_type_trends
-        
-    except Exception as e:
-        logger.error(f"職種別選択傾向の分析中にエラーが発生しました: {str(e)}")
-        return {"error": f"職種別選択傾向の分析中にエラーが発生しました: {str(e)}"}
-
-def generate_job_type_trend_text(job_type, top_choices, bottom_choices, all_choices):
-    """職種ごとの選択傾向を自然な日本語のテキストで表現する関数"""
-    try:
-        # 職種名を取得
-        job_type_str = str(job_type)
-        
-        # 分析の初期化
-        trend_parts = []
-        
-        # 最も選ばれた選択肢の特徴
-        if top_choices:
-            top1_name, top1_stats = top_choices[0]
-            top1_percentage = top1_stats["percentage"]
-            
-            if top1_percentage > 50:
-                trend_parts.append(f"{job_type_str}は「{top1_name}」を特に重視する傾向が強く（{top1_percentage}%）")
-            elif top1_percentage > 30:
-                trend_parts.append(f"{job_type_str}は「{top1_name}」を重視する傾向があり（{top1_percentage}%）")
-            else:
-                trend_parts.append(f"{job_type_str}は「{top1_name}」をある程度重視し（{top1_percentage}%）")
-        
-        # 2番目に選ばれた選択肢（あれば）
-        if len(top_choices) > 1:
-            top2_name, top2_stats = top_choices[1]
-            top2_percentage = top2_stats["percentage"]
-            
-            # 1位との差が小さい場合は「同様に」、大きい場合は「次いで」などと表現
-            if abs(top_choices[0][1]["percentage"] - top2_percentage) < 10:
-                trend_parts.append(f"同様に「{top2_name}」も重視しています（{top2_percentage}%）")
-            else:
-                trend_parts.append(f"次いで「{top2_name}」を評価しています（{top2_percentage}%）")
-        
-        # 最も選ばれなかった選択肢の特徴（あれば）
-        if bottom_choices and len(all_choices) > 3:  # 選択肢が十分にある場合のみ
-            bottom1_name, bottom1_stats = bottom_choices[0]
-            bottom1_percentage = bottom1_stats["percentage"]
-            
-            if bottom1_percentage < 10:
-                trend_parts.append(f"一方で「{bottom1_name}」はあまり重視されていません（{bottom1_percentage}%）")
-            elif bottom1_percentage < 20:
-                trend_parts.append(f"「{bottom1_name}」については比較的関心が低い傾向にあります（{bottom1_percentage}%）")
-        
-        # 職種の特徴を示唆する追加コメント
-        if top_choices and len(top_choices) > 0:
-            top1_name = top_choices[0][0]
-            
-            # 選択肢の名前に基づいて、職種の特性を推測
-            if "コスト" in top1_name or "価格" in top1_name or "費用" in top1_name:
-                trend_parts.append("コスト意識が高い傾向にあります")
-            elif "効率" in top1_name or "生産性" in top1_name:
-                trend_parts.append("業務効率を重視する傾向にあります")
-            elif "品質" in top1_name or "精度" in top1_name:
-                trend_parts.append("品質や精度を最優先する特徴があります")
-            elif "革新" in top1_name or "先進" in top1_name or "新技術" in top1_name:
-                trend_parts.append("新しい技術や革新的なアプローチに関心が高いです")
-            elif "安全" in top1_name or "セキュリティ" in top1_name:
-                trend_parts.append("安全性やセキュリティを重視する傾向があります")
-            elif "使いやすさ" in top1_name or "操作性" in top1_name:
-                trend_parts.append("使いやすさやユーザビリティを重視しています")
-        
-        # 最終的なテキストを生成
-        if trend_parts:
-            return "、".join(trend_parts) + "。"
-        else:
-            return f"{job_type_str}の選択傾向に明確な特徴は見られませんでした。"
-            
-    except Exception as e:
-        logger.error(f"職種別選択傾向のテキスト生成中にエラーが発生しました: {str(e)}")
-        return f"{job_type}の選択傾向の分析中にエラーが発生しました。"
-
 def generate_display_text(analysis_result):
     """分析結果を表示用のテキストに変換する"""
     file_info = analysis_result["file_info"]
     stats = analysis_result["statistics"]
     job_type_analysis = analysis_result.get("job_type_analysis", {})
+    choice_pattern_insights = analysis_result.get("choice_pattern_insights", "")
     
     text_parts = []
     
@@ -283,6 +156,20 @@ def generate_display_text(analysis_result):
     text_parts.append(f"- 行数: {file_info['num_rows']}")
     text_parts.append(f"- 列数: {file_info['num_columns']}")
     text_parts.append(f"- 列名: {', '.join(file_info['column_names'])}")
+    
+    # 職種別選択傾向の分析（最重要部分なので最初に表示）
+    if job_type_analysis and not isinstance(job_type_analysis, dict) or "error" in job_type_analysis:
+        error_msg = job_type_analysis.get("error", "不明なエラー")
+        text_parts.append(f"\n### 職種別選択傾向の分析: エラー\n{error_msg}")
+    elif job_type_analysis:
+        text_parts.append("\n### 職種別選択傾向の分析")
+        for job_type, trend_text in job_type_analysis.items():
+            text_parts.append(f"- **{job_type}**: {trend_text}")
+    
+    # 選択肢パターンの洞察
+    if choice_pattern_insights:
+        text_parts.append("\n### 選択肢の関連パターン分析")
+        text_parts.append(choice_pattern_insights)
     
     # 数値データの統計
     if stats["numeric"]:
@@ -311,15 +198,6 @@ def generate_display_text(analysis_result):
                 for cat, cat_stats in sorted_cats:
                     text_parts.append(f"  - {cat}: {cat_stats['count']}件 ({cat_stats['percentage']}%)")
     
-    # 職種別選択傾向の分析
-    if job_type_analysis and not isinstance(job_type_analysis, dict) or "error" in job_type_analysis:
-        error_msg = job_type_analysis.get("error", "不明なエラー")
-        text_parts.append(f"\n### 職種別選択傾向の分析: エラー\n{error_msg}")
-    elif job_type_analysis:
-        text_parts.append("\n### 職種別選択傾向の分析")
-        for job_type, trend_text in job_type_analysis.items():
-            text_parts.append(f"- **{job_type}**: {trend_text}")
-    
     return "\n".join(text_parts)
 
 def get_csv_insights_for_lp_planning(csv_analysis):
@@ -334,6 +212,7 @@ def get_csv_insights_for_lp_planning(csv_analysis):
     
     # 新しい分析結果を活用
     job_type_analysis = analysis_result.get("job_type_analysis", {})
+    choice_pattern_insights = analysis_result.get("choice_pattern_insights", "")
     
     # データの特徴を自然な文章で表現するための変数
     target_insights = []
@@ -413,6 +292,10 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         job_summary = "アンケートデータから得られた職種ごとの特徴的な傾向として、" + " ".join(job_type_insights)
         summary_paragraphs.append(job_summary)
     
+    # 選択肢の関連パターン
+    if choice_pattern_insights:
+        summary_paragraphs.append(choice_pattern_insights)
+    
     # 行動や嗜好の特徴
     combined_insights = preference_insights + behavioral_insights
     if combined_insights:
@@ -421,9 +304,9 @@ def get_csv_insights_for_lp_planning(csv_analysis):
     
     # LP企画への示唆
     if highlighted_job_types and len(highlighted_job_types) >= 2:
-        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
+        implications = "これらの職種別特性と選択パターンを踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
     else:
-        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。"
+        implications = "これらの職種別特性と選択パターンを踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。"
     
     summary_paragraphs.append(implications)
     
@@ -465,6 +348,7 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         "numeric_summary": numeric_text,
         "category_summary": category_text,
         "job_type_analysis": job_type_text,  # 新たに追加した職種別選択傾向
+        "choice_pattern_insights": choice_pattern_insights,  # 選択肢の関連パターン分析
         "sample_data_json": sample_data_json
     }
     
