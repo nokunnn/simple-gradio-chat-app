@@ -274,7 +274,16 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         if job_type in job_type_analysis:
             job_type_insights.append(job_type_analysis[job_type])
     
-    # 5. すべての洞察を組み合わせて自然な文章を生成
+    # 5. 選択肢パターンの洞察を追加
+    choice_insights = []
+    if choice_pattern_insights:
+        # 重要な部分のみを抽出（最初の段落と最後の段落）
+        choice_pattern_lines = choice_pattern_insights.split("\n")
+        if len(choice_pattern_lines) > 3:
+            # 最初の2行と最後の行を抽出
+            choice_insights = [choice_pattern_lines[0], choice_pattern_lines[-1]]
+    
+    # 6. すべての洞察を組み合わせて自然な文章を生成
     summary_paragraphs = []
     
     # ターゲット全体の概要
@@ -292,9 +301,10 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         job_summary = "アンケートデータから得られた職種ごとの特徴的な傾向として、" + " ".join(job_type_insights)
         summary_paragraphs.append(job_summary)
     
-    # 選択肢の関連パターン
-    if choice_pattern_insights:
-        summary_paragraphs.append(choice_pattern_insights)
+    # 選択肢パターンの洞察
+    if choice_insights:
+        choice_summary = "選択肢の選好傾向として、" + " ".join(choice_insights)
+        summary_paragraphs.append(choice_summary)
     
     # 行動や嗜好の特徴
     combined_insights = preference_insights + behavioral_insights
@@ -304,9 +314,9 @@ def get_csv_insights_for_lp_planning(csv_analysis):
     
     # LP企画への示唆
     if highlighted_job_types and len(highlighted_job_types) >= 2:
-        implications = "これらの職種別特性と選択パターンを踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
+        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。特に主要な職種である" + "、".join(highlighted_job_types[:2]) + "向けのメッセージを優先的に配置することで、コンバージョン率を高められる可能性があります。"
     else:
-        implications = "これらの職種別特性と選択パターンを踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。"
+        implications = "これらの職種別特性を踏まえると、各職種が持つ課題や関心事に焦点を当て、それぞれが重視する観点（効率性、コスト、品質など）に対応した価値提案をLPで訴求することが効果的です。"
     
     summary_paragraphs.append(implications)
     
@@ -348,7 +358,7 @@ def get_csv_insights_for_lp_planning(csv_analysis):
         "numeric_summary": numeric_text,
         "category_summary": category_text,
         "job_type_analysis": job_type_text,  # 新たに追加した職種別選択傾向
-        "choice_pattern_insights": choice_pattern_insights,  # 選択肢の関連パターン分析
+        "choice_pattern_insights": choice_pattern_insights,  # 選択肢パターンの洞察
         "sample_data_json": sample_data_json
     }
     
