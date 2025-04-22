@@ -158,9 +158,28 @@ CSS = """
         flex-direction: column;
         gap: 15px;
     }
+    /* 二重スクロールの修正 - chatbotコンテナの設定を変更 */
     .chat-area {
         min-height: 600px !important;
         max-height: 800px !important;
+        height: 700px !important;
+        overflow: auto !important;
+    }
+    /* グラディオのチャットボットコンポーネントの内部スクロールを無効化 */
+    .chat-area .chatbot-container {
+        overflow: visible !important;
+        height: auto !important;
+    }
+    /* メッセージコンテナのスクロール動作を変更 */
+    .chat-area .messages-container {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+    /* 個別メッセージの表示を調整 */
+    .chatbot-container .user-message, .chatbot-container .bot-message {
+        max-width: 90% !important;
+        padding: 12px 16px !important;
     }
     .title-area {
         margin-bottom: 5px;
@@ -307,7 +326,9 @@ def create_app():
                     elem_classes="chat-area chatbot-container",
                     bubble_full_width=False,
                     avatar_images=(None, "https://api.dicebear.com/7.x/thumbs/svg?seed=Aneka"),
-                    height=700  # 高さを増加
+                    height=700,  # 高さを増加
+                    render=True,  # レンダリングを確実に有効化
+                    show_copy_button=True  # コピーボタンを表示
                 )
                 
                 # ファイルアップロードエリア
